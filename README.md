@@ -1,71 +1,60 @@
-# LMP Task & Invoicing Tracker
+# TTIS — Tasks Tracking & Invoicing System
 
-A live-synced web dashboard for tracking task progress and invoicing,
-reading directly from your Excel tracking sheet.
+A pure-frontend browser dashboard for Landmark (LMP) to track task progress, invoicing, and invoice readiness — reading directly from an uploaded Excel file. No server, no installation required.
 
 ---
 
 ## Quick Start
 
-### 1. Install Python dependencies
-```bash
-pip install -r requirements.txt
-```
-
-### 2. Run the server
-```bash
-python server.py --file "C:\path\to\Total_Task_Tracking_New_2026.xlsm"
-```
-
-> **Windows tip:** You can also copy your Excel file to this folder and rename it `data.xlsm`,
-> then just run `python server.py` without any arguments.
-
-### 3. Open the dashboard
-The server will print:
-```
-🚀  Landmark Tracker running → http://localhost:5000
-```
-Open that URL in your browser.
+1. Open `index.html` in Chrome or Edge
+2. Drag & drop your `.xlsm` / `.xlsx` tracking file onto the upload screen
+3. The app reads the **"Invoicing Track"** sheet (headers on row 4, data from row 5)
 
 ---
 
 ## Features
 
-| Feature | Details |
-|---|---|
-| **Live Sync** | Server checks for file changes every 15 seconds and auto-updates |
-| **Dashboard** | KPI cards + 5 charts (status, acceptance, regions, vendors, PO status) |
-| **Task Table** | 5,900+ rows with search + 5 filters (status, acceptance, region, vendor, stream) |
-| **Invoicing Panel** | Financial view with 1st/2nd receivings, remaining amounts, LMP/Contractor portions |
-| **Sort** | Click any column header to sort asc/desc |
-| **Pagination** | 100 rows per page |
+| Tab | What it does |
+|-----|-------------|
+| **Dashboard** | KPI cards + 6 charts: task status, acceptance, region, vendor, PO status, invoice collection progress |
+| **Tasks** | Full table — search + 5 filters (status, acceptance, region, vendor, stream), sortable columns, 100 rows/page |
+| **Invoicing** | Financial KPI cards + payment table (1st/2nd receivings, remaining, LMP/Contractor portions) |
+| **Invoice Readiness** | Shows FAC/TOC tasks ready to invoice; optional TSR qty check + previous export de-duplication; export to Excel |
 
 ---
 
-## How Live Sync Works
+## Invoice Readiness Workflow
 
-1. You edit/save your Excel file as usual in Excel
-2. The Python server detects the file modification (checks every 15 seconds)
-3. The browser polls the server every 20 seconds for changes
-4. When a change is detected, data auto-refreshes without you doing anything
-5. You can also click **⟳ Reload** in the header to force an immediate refresh
-
----
-
-## Changing the Port
-
-```bash
-python server.py --file data.xlsm --port 8080
-```
+1. Switch to the **Invoice Readiness** tab
+2. Optionally load your **TSR file** — checks remaining quantity per line item (OK / EXCEEDS / NOT FOUND)
+3. Optionally load a **previous TTIS export** — automatically greys out already-invoiced tasks by ID#
+4. Select rows (or leave none selected to export all new items) → **Export to Excel**
+5. Next session: load that exported file as "Previous Export" to avoid duplicates
 
 ---
 
 ## File Structure
 
 ```
-landmark-tracker/
-├── server.py        ← Python backend (run this)
-├── index.html       ← Dashboard frontend (auto-served by server)
-├── requirements.txt ← Python packages
-└── README.md
+index.html          ← App shell + upload screen
+css/
+├── main.css        ← CSS variables, theme, upload screen, header
+├── components.css  ← Cards, tables, badges, filters, pagination
+└── charts.css      ← Chart grid and region bar styles
+js/
+├── data.js         ← SheetJS parsing, column mapping, shared helpers
+├── dashboard.js    ← Dashboard KPIs + Chart.js charts
+├── tasks.js        ← Tasks table (filter / sort / paginate)
+├── invoicing.js    ← Invoicing KPIs + payment table
+├── readiness.js    ← Invoice Readiness tab (TSR check, de-dup, export)
+└── app.js          ← Bootstrap, upload events, tab routing
 ```
+
+---
+
+## No Installation Needed
+
+All dependencies are loaded from CDN:
+- [SheetJS](https://sheetjs.com/) — reads `.xlsm` / `.xlsx` files in the browser
+- [Chart.js](https://www.chartjs.org/) — dashboard charts
+- Google Fonts — Rajdhani, JetBrains Mono, Inter
