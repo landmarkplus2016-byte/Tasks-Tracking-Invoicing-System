@@ -1,0 +1,152 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+---
+
+## Running the App
+
+No build step, no npm, no dependencies to install.
+
+**Option A — VS Code Live Server (preferred)**
+Right-click `tsr-checker/index.html` → "Open with Live Server"
+
+**Option B — terminal**
+```bash
+cd tsr-checker
+npx serve .
+```
+
+Open in **Chrome or Edge** — other browsers work for analysis and export, but the PWA install prompt only fires in Chromium browsers.
+
+---
+
+## File Separation Rules — STRICT, no exceptions
+
+| File | Allowed content |
+|------|----------------|
+| `index.html` | HTML structure and IDs only. No `style=""` attributes, no inline JS (except the single `<script>` that registers `sw.js`). |
+| `app.js` | All JS: state, event listeners, DOM manipulation, SheetJS calls, analysis logic, export logic. |
+| `styles.css` | All styling: layout, colours, animations, badge styles, responsive rules. |
+
+---
+
+## Architecture
+
+### Data flow
+
+1. User picks two files via hidden `<input type="file">` elements.
+2. SheetJS (`XLSX` global from CDN) parses both files in-browser into workbook objects stored in module-level state (`trackingWorkbook`, `tsrWorkbook`).
+3. `runAnalysis()` reads both workbooks synchronously and populates `analysisResults`, `tsrSubItems`, `pendingItems`, `needPoItems`, and the three money totals.
+4. `renderResults()` populates the DOM table and money cards from those results.
+5. `exportToExcel()` builds a three-sheet `.xlsx` from the three item arrays and triggers a browser download.
+
+### State variables (`app.js`)
+
+| Variable | Purpose |
+|----------|---------|
+| `trackingWorkbook` / `tsrWorkbook` | Parsed SheetJS workbook objects |
+| `analysisResults` | Array of line-item comparison results shown in the on-screen table |
+| `tsrSubItems` | Export rows for fully submittable sites (TSR Sub Items sheet) |
+| `pendingItems` | Export rows for sites with any unaccepted item (Pending Items sheet) |
+| `needPoItems` | Export rows for FAC'd sites with no TSR quantity (Need PO sheet) |
+| `moneyCanSubmit` / `moneyPending` / `moneyNeedPo` | EGP New Total sums per category |
+
+### Combo key system
+
+Sites are identified by a `"JobCode|LogicalSiteID"` combo key. Category assignment uses a priority system — a combo can only appear in **one** export tab:
+
+1. **Pending**: any row in the full data set for that combo has a blank Acceptance Status
+2. **Need PO**: non-pending combo where a FAC'd filtered row maps to a NOT_FOUND or EXCEEDS line item
+3. **TSR Sub Items**: everything else
+
+Export array building and money totals **must happen after Step C** (TSR comparison) because Need PO detection requires knowing which line items are NOT_FOUND/EXCEEDS.
+
+### Dynamic column detection (Tracking file, header row index 3)
+
+These columns are located by scanning the header row (case-insensitive):
+
+| Header text match | Variable |
+|-------------------|----------|
+| `id#` or `id #` (exact) | `idColIndex` |
+| contains `job code` | `jobCodeColIndex` |
+| contains `logical site` | `logicalSiteColIndex` |
+| contains `acceptance status` | `acceptanceStatusColIndex` |
+| contains `new total` | `newTotalColIndex` |
+
+### Fixed column indices (Tracking file — "Invoicing Track" sheet, 0-based)
+
+Data starts at row index 4 (Excel row 5). Header row is index 3.
+
+| Index | Column | Used for |
+|-------|--------|----------|
+| 11 | Distance | Distance multiplier lookup |
+| 12 | Absolute Quantity | Base qty before multiplier |
+| 18 | Line Item | Grouping key and export |
+| 28 | FAC Date | Filter: must be non-empty |
+| 30 | Acceptance Week | Filter: must be non-empty |
+| 31 | TSR Sub# | Filter: must be empty |
+| 32 | PO Status | Filter: must be empty |
+
+### TSR file mapping ("Request Form - VF" sheet)
+
+Header row is located dynamically by scanning col[6] for a cell containing "item description" (case-insensitive). Data rows follow immediately after:
+
+| Index | Content |
+|-------|---------|
+| 6 | Item Description (match key) |
+| 50 | Remaining quantity |
+
+Line item matching tries exact match first, then falls back to substring containment in either direction.
+
+### Distance multipliers
+
+```
+0–100 km → ×1.0 | 100–400 km → ×1.1 | 400–800 km → ×1.2 | >800 km → ×1.25
+```
+
+Both `km` and `Km` capitalisations are handled. Unknown distances default to ×1.0.
+
+### Export format
+
+All three sheets share the same structure:
+
+**Headers:** `ID#`, `Job Code`, `Logical Site ID`, `Actual Qty`, `Line Item`, `Acceptance Status`, `FAC Date`
+
+- `Pending Items` sheet includes ALL data rows for pending combos (not just filtered rows)
+- `Need PO` sheet includes ALL data rows for need-PO combos
+- `Need PO` sheet is omitted entirely if `needPoItems` is empty
+- Money totals are summed from the `New Total` column of **filtered rows only**, categorised by combo membership
+
+### Money summary (Step 3 UI)
+
+Three EGP-formatted cards shown after analysis:
+- **Can Submit** — `moneyCanSubmit` (TSR Sub Items rows)
+- **Pending** — `moneyPending`
+- **Need PO** — `moneyNeedPo`
+
+The `#money-summary` grid is hidden when all three totals are zero.
+
+### `analysisResults` array — each element
+
+```js
+{
+  lineItem,          // string — grouped line item name
+  trackingQty,       // number — sum of actual qtys for the group
+  tsrRemaining,      // number | null
+  difference,        // number | null — tsrRemaining - trackingQty
+  status,            // 'OK' | 'EXCEEDS' | 'NOT_FOUND'
+  excelRowNumbers,   // number[] — 1-based Excel row numbers
+  individualQtys,    // number[] — per-row actual qty (absQty × distance multiplier)
+  facDates,          // any[]   — raw FAC Date values per row
+  acceptanceWeeks    // any[]   — raw Acceptance Week values per row
+}
+```
+
+### PWA / service worker
+
+`sw.js` caches the app shell (all local files) on install. SheetJS is loaded from CDN and is intentionally **not** cached. Icons (`icon-192.png`, `icon-512.png`) are stored at the repo root alongside `index.html`. The `#install-banner` is hidden by default in CSS and shown only when the browser fires `beforeinstallprompt`.
+
+### Sections shown/hidden by JS
+
+`#step-results` and `#step-export` start as `display: none` in CSS and are revealed after a successful `runAnalysis()` call. `#loading` starts hidden and is toggled around the analysis call. `#money-summary` starts as `display: none` and is set to `display: grid` if any money total is non-zero.

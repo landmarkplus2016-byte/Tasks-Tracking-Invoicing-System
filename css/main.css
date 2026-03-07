@@ -1,0 +1,436 @@
+/* ══════════════════════════════════════════════════════
+   TTIS — main.css  |  CSS Variables, Reset, Upload Screen, Header, Layout
+   ══════════════════════════════════════════════════════ */
+
+:root {
+  --bg:        #eef2f8;
+  --bg2:       #ffffff;
+  --bg3:       #e4ecf6;
+  --bg4:       #d6e2f0;
+  --border:    #c4d3e8;
+  --border2:   #adbcd4;
+  --border3:   #92a8c0;
+  --text:      #0d1e33;
+  --text2:     #3a5878;
+  --text3:     #7a96b2;
+  --cyan:      #1a56db;
+  --cyan2:     #1345b5;
+  --cyan-dim:  rgba(26,86,219,.08);
+  --green:     #16a34a;
+  --amber:     #d97706;
+  --red:       #dc2626;
+  --purple:    #7c3aed;
+  --blue:      #2563eb;
+  --header-h:  56px;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  overflow-x: hidden;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg3); }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border3); }
+
+/* ══ Upload Screen ══════════════════════════════════════ */
+#uploadScreen {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 500;
+  overflow: hidden;
+}
+
+.upload-bg-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(26,86,219,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26,86,219,.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+}
+
+.upload-corner {
+  position: absolute;
+  width: 60px;
+  height: 60px;
+  pointer-events: none;
+}
+.upload-corner.tl { top: 20px; left: 20px; border-top: 1px solid var(--cyan2); border-left: 1px solid var(--cyan2); opacity: .3; }
+.upload-corner.tr { top: 20px; right: 20px; border-top: 1px solid var(--cyan2); border-right: 1px solid var(--cyan2); opacity: .3; }
+.upload-corner.bl { bottom: 20px; left: 20px; border-bottom: 1px solid var(--cyan2); border-left: 1px solid var(--cyan2); opacity: .3; }
+.upload-corner.br { bottom: 20px; right: 20px; border-bottom: 1px solid var(--cyan2); border-right: 1px solid var(--cyan2); opacity: .3; }
+
+.upload-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  width: 100%;
+  max-width: 520px;
+  padding: 24px;
+  position: relative;
+  z-index: 1;
+}
+
+.upload-brand {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.upload-logo-icon {
+  width: 64px;
+  height: 64px;
+  background: rgba(26,86,219,.08);
+  border: 1px solid rgba(26,86,219,.2);
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+}
+.upload-logo-icon::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(26,86,219,.12), transparent);
+  pointer-events: none;
+}
+
+.upload-app-name {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 42px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: var(--cyan);
+  line-height: 1;
+}
+.upload-app-sub {
+  font-size: 13px;
+  color: var(--text2);
+  letter-spacing: .5px;
+  margin-top: 3px;
+}
+.upload-app-by {
+  font-size: 11px;
+  color: var(--text3);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+/* Drop zone card */
+.upload-card {
+  width: 100%;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color .2s;
+  cursor: pointer;
+}
+.upload-card:hover { border-color: var(--border2); }
+.upload-card.drag-over { border-color: var(--cyan); box-shadow: 0 0 30px rgba(0,212,255,.12); }
+
+.upload-card-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 32px;
+  text-align: center;
+}
+
+.upload-icon-wrap {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: rgba(26,86,219,.07);
+  border: 1px solid rgba(26,86,219,.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.upload-drop-title {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: .5px;
+}
+.upload-drop-sub {
+  font-size: 13px;
+  color: var(--text2);
+}
+.upload-drop-hint {
+  font-size: 11px;
+  color: var(--text3);
+  font-family: 'JetBrains Mono', monospace;
+  margin-top: 2px;
+}
+
+.upload-browse-btn {
+  margin-top: 12px;
+  padding: 9px 28px;
+  background: var(--cyan);
+  border: 1px solid var(--cyan2);
+  border-radius: 7px;
+  color: #ffffff;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all .15s;
+  text-transform: uppercase;
+}
+.upload-browse-btn:hover {
+  background: var(--cyan2);
+  border-color: var(--cyan2);
+}
+
+.upload-drag-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(26,86,219,.06);
+  border: 2px dashed var(--cyan);
+  border-radius: 14px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.upload-card.drag-over .upload-drag-overlay { display: flex; }
+.upload-drag-text {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--cyan);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+/* File info */
+.upload-file-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  background: rgba(34,197,94,.06);
+  border: 1px solid rgba(34,197,94,.2);
+  border-radius: 8px;
+  width: 100%;
+}
+.upload-file-name {
+  font-size: 13px;
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 500;
+}
+.upload-file-size {
+  font-size: 11px;
+  color: var(--text2);
+  margin-top: 2px;
+}
+
+/* Progress */
+.upload-progress { width: 100%; }
+.upload-progress-bar {
+  height: 4px;
+  background: var(--bg3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.upload-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--cyan2), var(--cyan));
+  border-radius: 2px;
+  transition: width .3s ease;
+  width: 0%;
+}
+.upload-progress-text {
+  font-size: 11px;
+  color: var(--text2);
+  font-family: 'JetBrains Mono', monospace;
+  text-align: center;
+  margin-top: 8px;
+  letter-spacing: .5px;
+}
+
+/* Error */
+.upload-error {
+  width: 100%;
+  padding: 12px 16px;
+  background: rgba(239,68,68,.08);
+  border: 1px solid rgba(239,68,68,.25);
+  border-radius: 8px;
+  color: var(--red);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ══ Header ══════════════════════════════════════════════ */
+#header {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  height: var(--header-h);
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 16px;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.logo-icon {
+  width: 34px;
+  height: 34px;
+  background: linear-gradient(135deg, var(--cyan2), var(--cyan));
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.logo-block { display: flex; flex-direction: column; }
+.logo-name {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 2.5px;
+  color: var(--cyan);
+  line-height: 1;
+}
+.logo-sub {
+  font-size: 10px;
+  color: var(--text3);
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  margin-top: 1px;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 2px;
+  margin-left: 12px;
+}
+.tab-btn {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  padding: 6px 16px;
+  border-radius: 5px;
+  border: none;
+  background: transparent;
+  color: var(--text2);
+  cursor: pointer;
+  transition: all .15s;
+  text-transform: uppercase;
+}
+.tab-btn:hover { color: var(--text); background: var(--bg3); }
+.tab-btn.active { color: var(--cyan); background: var(--cyan-dim); }
+
+/* Header right */
+.header-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.data-badge {
+  font-size: 11px;
+  color: var(--text2);
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: .3px;
+}
+
+.reload-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .5px;
+  padding: 5px 12px;
+  border-radius: 5px;
+  background: var(--cyan-dim);
+  border: 1px solid rgba(26,86,219,.25);
+  color: var(--cyan);
+  cursor: pointer;
+  transition: all .15s;
+  text-transform: uppercase;
+}
+.reload-btn:hover { background: rgba(26,86,219,.14); border-color: rgba(26,86,219,.4); }
+
+/* ══ Layout ══════════════════════════════════════════════ */
+#main {
+  margin-top: var(--header-h);
+  padding: 24px;
+  max-width: 1680px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.section { display: none; }
+.section.active { display: block; }
+
+/* ══ Toast ════════════════════════════════════════════════ */
+#toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 600;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 18px;
+  font-size: 13px;
+  color: var(--text);
+  box-shadow: 0 4px 24px rgba(13,30,51,.15);
+  transform: translateY(80px);
+  opacity: 0;
+  transition: all .3s;
+  max-width: 340px;
+  pointer-events: none;
+}
+#toast.show { transform: translateY(0); opacity: 1; }
+#toast.success { border-color: rgba(22,163,74,.4); color: var(--green); }
+#toast.error   { border-color: rgba(220,38,38,.4); color: var(--red); }
+
+/* ══ Animations ══════════════════════════════════════════ */
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+@keyframes spin   { to { transform: rotate(360deg); } }
+@keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }

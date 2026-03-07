@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TTIS — Tasks Tracking &amp; Invoicing System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/main.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/charts.css">
+</head>
+<body>
+
+<!-- ══ UPLOAD SCREEN ══ -->
+<div id="uploadScreen">
+  <div class="upload-bg-grid"></div>
+  <div class="upload-corner tl"></div>
+  <div class="upload-corner tr"></div>
+  <div class="upload-corner bl"></div>
+  <div class="upload-corner br"></div>
+
+  <div class="upload-center">
+    <div class="upload-brand">
+      <div class="upload-logo-icon">
+        <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+          <rect x="2" y="2" width="32" height="32" rx="6" stroke="#00d4ff" stroke-width="1.5" stroke-dasharray="4 2"/>
+          <path d="M10 18 L18 10 L26 18" stroke="#00d4ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M18 10 L18 26" stroke="#00d4ff" stroke-width="2" stroke-linecap="round"/>
+          <path d="M12 26 L24 26" stroke="#00d4ff" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="upload-brand-text">
+        <div class="upload-app-name">TTIS</div>
+        <div class="upload-app-sub">Tasks Tracking &amp; Invoicing System</div>
+        <div class="upload-app-by">by Landmark (LMP)</div>
+      </div>
+    </div>
+
+    <div class="upload-card" id="dropZone">
+      <div class="upload-card-inner">
+        <div class="upload-icon-wrap">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <rect x="6" y="6" width="36" height="36" rx="8" stroke="#1e2a3a" stroke-width="1.5"/>
+            <path d="M16 28 L24 20 L32 28" stroke="#00d4ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M24 20 L24 36" stroke="#00d4ff" stroke-width="2" stroke-linecap="round"/>
+            <rect x="10" y="34" width="28" height="2" rx="1" fill="#1e2a3a"/>
+          </svg>
+        </div>
+        <div class="upload-drop-title">Drop your Excel file here</div>
+        <div class="upload-drop-sub">or click to browse</div>
+        <div class="upload-drop-hint">Supports .xlsm and .xlsx — reads "Invoicing Track" sheet</div>
+        <input type="file" id="fileInput" accept=".xlsm,.xlsx,.xls" style="display:none">
+        <button class="upload-browse-btn" onclick="document.getElementById('fileInput').click()">
+          Browse File
+        </button>
+      </div>
+      <div class="upload-drag-overlay" id="dragOverlay">
+        <div class="upload-drag-text">Release to Load</div>
+      </div>
+    </div>
+
+    <div class="upload-file-info" id="fileInfo" style="display:none">
+      <div class="upload-file-icon">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M4 2h8l4 4v12a1 1 0 01-1 1H5a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="#22c55e" stroke-width="1.5"/>
+          <path d="M12 2v4h4" stroke="#22c55e" stroke-width="1.5"/>
+        </svg>
+      </div>
+      <div class="upload-file-details">
+        <div class="upload-file-name" id="fileName"></div>
+        <div class="upload-file-size" id="fileSize"></div>
+      </div>
+    </div>
+
+    <div class="upload-progress" id="uploadProgress" style="display:none">
+      <div class="upload-progress-bar">
+        <div class="upload-progress-fill" id="uploadProgressFill"></div>
+      </div>
+      <div class="upload-progress-text" id="uploadProgressText">Parsing file…</div>
+    </div>
+
+    <div class="upload-error" id="uploadError" style="display:none"></div>
+  </div>
+</div>
+
+<!-- ══ APP SHELL ══ -->
+<div id="appShell" style="display:none">
+
+  <!-- Header -->
+  <div id="header">
+    <div class="logo">
+      <div class="logo-icon">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M4 10 L10 4 L16 10" stroke="#07090f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M10 4 L10 16" stroke="#07090f" stroke-width="2" stroke-linecap="round"/>
+          <path d="M6 16 L14 16" stroke="#07090f" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="logo-block">
+        <span class="logo-name">TTIS</span>
+        <span class="logo-sub">Tasks Tracking &amp; Invoicing System — LMP</span>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+      <button class="tab-btn" data-tab="tasks">Tasks</button>
+      <button class="tab-btn" data-tab="invoicing">Invoicing</button>
+      <button class="tab-btn" data-tab="readiness">Invoice Readiness</button>
+    </div>
+
+    <div class="header-right">
+      <div class="data-badge" id="dataBadge"></div>
+      <button class="reload-btn" id="reloadBtn" title="Load a different file">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M12 7A5 5 0 112 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          <path d="M12 3v4h-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Load File
+      </button>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div id="main">
+    <div id="sec-dashboard" class="section active"></div>
+    <div id="sec-tasks" class="section"></div>
+    <div id="sec-invoicing" class="section"></div>
+    <div id="sec-readiness" class="section"></div>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Scripts -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="js/data.js"></script>
+<script src="js/dashboard.js"></script>
+<script src="js/tasks.js"></script>
+<script src="js/invoicing.js"></script>
+<script src="js/readiness.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

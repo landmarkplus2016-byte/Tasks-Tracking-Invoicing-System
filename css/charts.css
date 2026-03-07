@@ -1,0 +1,151 @@
+/* ══════════════════════════════════════════════════════
+   TTIS — charts.css  |  Chart layouts and region/progress visuals
+   ══════════════════════════════════════════════════════ */
+
+/* ══ Charts Grid ══════════════════════════════════════════ */
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 24px;
+}
+@media (max-width: 1200px) { .charts-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 720px)  { .charts-grid { grid-template-columns: 1fr; } }
+
+.chart-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  animation: fadeIn .35s ease both;
+  position: relative;
+  overflow: hidden;
+}
+.chart-card::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(26,86,219,.08), transparent);
+  pointer-events: none;
+}
+
+.chart-title {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--text2);
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.chart-title::before {
+  content: '';
+  width: 3px;
+  height: 12px;
+  background: var(--cyan);
+  border-radius: 2px;
+  opacity: .6;
+  flex-shrink: 0;
+}
+
+.chart-wrap {
+  position: relative;
+  height: 200px;
+}
+
+/* ══ Region Bar Rows ══════════════════════════════════════ */
+.region-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 200px;
+  justify-content: space-evenly;
+  overflow: hidden;
+}
+
+.region-row-item { display: flex; flex-direction: column; gap: 4px; }
+
+.region-row-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.region-row-name {
+  font-size: 11px;
+  color: var(--text2);
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+.region-row-count {
+  font-size: 11px;
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 500;
+}
+
+.region-row-bar-bg {
+  height: 5px;
+  background: var(--bg3);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.region-row-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--cyan2), var(--cyan));
+  transition: width .9s cubic-bezier(.4,0,.2,1);
+}
+
+/* ══ Invoice Progress Panel ═══════════════════════════════ */
+.inv-progress-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 200px;
+  justify-content: space-evenly;
+}
+
+.inv-progress-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.inv-progress-labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.inv-progress-label {
+  font-size: 11px;
+  color: var(--text2);
+  font-family: 'JetBrains Mono', monospace;
+}
+.inv-progress-value {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 500;
+}
+.inv-progress-pct {
+  font-size: 10px;
+  color: var(--text3);
+  font-family: 'JetBrains Mono', monospace;
+  margin-left: 4px;
+}
+
+/* Vendor chart — slightly taller to show more labels */
+.chart-card.chart-vendor .chart-wrap { height: 220px; }
+
+/* Wide card spanning 2 columns for the collection progress */
+.chart-card.chart-wide {
+  grid-column: span 2;
+}
+@media (max-width: 1200px) {
+  .chart-card.chart-wide { grid-column: span 1; }
+}
