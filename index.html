@@ -108,10 +108,14 @@
       <button class="tab-btn" data-tab="tasks">Tasks</button>
       <button class="tab-btn" data-tab="invoicing">Invoicing</button>
       <button class="tab-btn" data-tab="readiness">Invoice Readiness</button>
+      <button class="tab-btn" data-tab="settings">Settings</button>
     </div>
 
     <div class="header-right">
       <div class="data-badge" id="dataBadge"></div>
+      <button class="import-pc-btn" onclick="ImportManager.open()" title="Import from PC Tracking file">
+        &#8679; Import PC
+      </button>
       <button class="reload-btn" id="reloadBtn" title="Load a different file">
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <path d="M12 7A5 5 0 112 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
@@ -128,6 +132,7 @@
     <div id="sec-tasks" class="section"></div>
     <div id="sec-invoicing" class="section"></div>
     <div id="sec-readiness" class="section"></div>
+    <div id="sec-settings" class="section"></div>
   </div>
 
 </div>
@@ -138,11 +143,16 @@
 <!-- Scripts -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="js/storage/googledrive.js"></script>
 <script src="js/data.js"></script>
+<script src="js/pricing.js"></script>
 <script src="js/dashboard.js"></script>
 <script src="js/tasks.js"></script>
 <script src="js/invoicing.js"></script>
 <script src="js/readiness.js"></script>
+<script src="js/import.js"></script>
+<script src="js/settings.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

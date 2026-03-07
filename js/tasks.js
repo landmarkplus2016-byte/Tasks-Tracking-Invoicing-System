@@ -74,6 +74,7 @@ const Tasks = (() => {
                 <th onclick="Tasks.sortBy('po_status')">PO Status</th>
                 <th onclick="Tasks.sortBy('coordinator')">Coordinator</th>
                 <th onclick="Tasks.sortBy('vf_owner')">VF Owner</th>
+                <th>Price</th>
               </tr>
             </thead>
             <tbody id="taskBody"></tbody>
@@ -177,7 +178,7 @@ const Tasks = (() => {
     if (!tbody) return;
 
     if (slice.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="23" class="empty-state">
+      tbody.innerHTML = `<tr><td colspan="24" class="empty-state">
         <div class="empty-state-text">No matching records</div></td></tr>`;
     } else {
       tbody.innerHTML = slice.map(r => `
@@ -196,7 +197,7 @@ const Tasks = (() => {
           <td>${_esc(r.engineer || '')}</td>
           <td style="max-width:160px" title="${_esc(r.line_item || '')}">${_esc(r.line_item || '')}</td>
           <td style="text-align:right">${r.act_qty != null ? r.act_qty : '—'}</td>
-          <td style="text-align:right;color:var(--text)">${r.total_price ? fmtEGP(r.total_price) : '—'}</td>
+          <td style="text-align:right">${_totalPriceCell(r)}</td>
           <td>${_statusBadge(r.status)}</td>
           <td>${_esc(r.task_date || '—')}</td>
           <td>${_acceptBadge(r.acceptance_status)}</td>
@@ -205,6 +206,7 @@ const Tasks = (() => {
           <td>${_poBadge(r.po_status)}</td>
           <td>${_esc(r.coordinator || '')}</td>
           <td>${_esc(r.vf_owner || '')}</td>
+          <td>${_priceBadge(r)}</td>
         </tr>`).join('');
     }
 
@@ -239,6 +241,24 @@ function _poBadge(s) {
   if (/received/i.test(s) && !/partial/i.test(s)) return `<span class="badge badge-recv">${_esc(s)}</span>`;
   if (/partial/i.test(s)) return `<span class="badge badge-partial">${_esc(s)}</span>`;
   return `<span class="badge badge-pending">${_esc(s)}</span>`;
+}
+
+function _priceBadge(r) {
+  if (r.price_unmatched)
+    return `<span class="badge badge-price-warn" title="${_esc(r.line_item_raw || r.line_item || '')}">&#9888; Unmatched</span>`;
+  if (r.line_item_code)
+    return `<span class="badge badge-price-ok">${_esc(r.line_item_code)}</span>`;
+  return '';
+}
+
+function _totalPriceCell(r) {
+  if (!r.total_price) return '<span style="color:var(--text-dim)">—</span>';
+  const stale   = typeof PriceList !== 'undefined' && PriceList.isPriceStale(r);
+  const tooltip = typeof PriceList !== 'undefined' ? PriceList.getTooltipText(r) : '';
+  const staleBadge = stale ? ' <span class="badge-price-stale" title="Price list has been updated since this was calculated">&#128176;</span>' : '';
+  return tooltip
+    ? `<span style="color:var(--text);cursor:help;border-bottom:1px dotted var(--border)" title="${_esc(tooltip)}">${fmtEGP(r.total_price)}</span>${staleBadge}`
+    : `<span style="color:var(--text)">${fmtEGP(r.total_price)}</span>${staleBadge}`;
 }
 
 function _esc(str) {

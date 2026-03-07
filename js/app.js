@@ -28,9 +28,11 @@ document.addEventListener('DOMContentLoaded', () => {
   $uploadError        = document.getElementById('uploadError');
   $dataBadge          = document.getElementById('dataBadge');
 
+  PriceList.init();
   _bindUploadEvents();
   _bindTabEvents();
   _bindReloadBtn();
+  _tryAutoConnect();
 });
 
 // ── Upload events ──────────────────────────────────────────
@@ -117,6 +119,7 @@ function _launchApp(meta) {
   Tasks.init(_rows);
   Invoicing.init(_rows);
   Readiness.init(_rows);
+  Settings.init(_rows);
 
   // Show app
   setTimeout(() => {
@@ -182,6 +185,19 @@ function _showUploadError(msg) {
 
 function _hideUploadError() {
   $uploadError.style.display = 'none';
+}
+
+// ── Auto-connect on startup ────────────────────────────────
+async function _tryAutoConnect() {
+  try {
+    const file = await Settings.autoConnect();
+    if (file) {
+      showToast('Auto-connecting via saved provider…', 'info');
+      _loadFile(file);
+    }
+  } catch (err) {
+    showToast(`Auto-connect failed: ${err.message}`, 'error');
+  }
 }
 
 // ── Toast ──────────────────────────────────────────────────
