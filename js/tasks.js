@@ -198,7 +198,7 @@ const Tasks = (() => {
           <td style="max-width:160px" title="${_esc(r.line_item || '')}">${_esc(r.line_item || '')}</td>
           <td style="text-align:right">${r.act_qty != null ? r.act_qty : '—'}</td>
           <td style="text-align:right">${_totalPriceCell(r)}</td>
-          <td>${_statusBadge(r.status)}</td>
+          <td>${_statusBadge(r.status, r.status_raw)}</td>
           <td>${_esc(r.task_date || '—')}</td>
           <td>${_acceptBadge(r.acceptance_status)}</td>
           <td>${_esc(r.fac_date || '—')}</td>
@@ -221,13 +221,19 @@ const Tasks = (() => {
 })();
 
 // ── Shared helpers ────────────────────────────────────────
-function _statusBadge(s) {
+function _statusBadge(s, raw) {
   if (!s) return '<span class="badge badge-pending">—</span>';
+  // Tooltip shows the original raw value when it differs from the normalised label
+  const tip = (raw && raw !== s) ? ` title="${_esc(raw)}"` : '';
+  if (s === 'Done')        return `<span class="badge badge-done"${tip}>${_esc(s)}</span>`;
+  if (s === 'Cancelled')   return `<span class="badge badge-cancel"${tip}>${_esc(s)}</span>`;
+  if (s === 'In Progress') return `<span class="badge badge-pending"${tip}>${_esc(s)}</span>`;
+  // Fallback for legacy/imported rows not yet normalised
   const lc = s.toLowerCase();
-  if (lc === 'done') return `<span class="badge badge-done">${_esc(s)}</span>`;
-  if (lc === 'assigned') return `<span class="badge badge-assigned">${_esc(s)}</span>`;
-  if (/cancel/.test(lc)) return `<span class="badge badge-cancel">${_esc(s)}</span>`;
-  return `<span class="badge badge-pending">${_esc(s)}</span>`;
+  if (lc === 'done')      return `<span class="badge badge-done"${tip}>${_esc(s)}</span>`;
+  if (/cancel/.test(lc)) return `<span class="badge badge-cancel"${tip}>${_esc(s)}</span>`;
+  if (lc === 'assigned')  return `<span class="badge badge-assigned"${tip}>${_esc(s)}</span>`;
+  return `<span class="badge badge-pending"${tip}>${_esc(s)}</span>`;
 }
 
 function _acceptBadge(s) {
@@ -286,9 +292,15 @@ function _renderPagination(id, cur, total, cb) {
 
   el.innerHTML = pages.map(({ label, pg, active }) => {
     const dis = !pg || active;
-    return `<button class="page-btn${active ? ' active' : ''}" ${dis ? 'disabled' : ''}
-      onclick="${pg ? `(${cb})(${pg})` : ''}">${label}</button>`;
+    return `<button class="page-btn${active ? ' active' : ''}" ${dis ? 'disabled' : ''} ${pg ? `data-pg="${pg}"` : ''}>${label}</button>`;
   }).join('');
+
+  el.onclick = e => {
+    const btn = e.target.closest('.page-btn');
+    if (!btn || btn.disabled) return;
+    const pg = Number(btn.dataset.pg);
+    if (pg) cb(pg);
+  };
 }
 
 function _updateSortHeaders(tableId, col, dir) {

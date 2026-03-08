@@ -113,6 +113,10 @@
 
     <div class="header-right">
       <div class="data-badge" id="dataBadge"></div>
+      <div id="syncStatus" class="sync-status-badge sync-status-never" title="No sync yet"></div>
+      <button class="force-refresh-btn" onclick="ImportManager.open()" title="Force an immediate sync with PC_Tracking file">
+        &#8635; Force Refresh
+      </button>
       <button class="import-pc-btn" onclick="ImportManager.open()" title="Import from PC Tracking file">
         &#8679; Import PC
       </button>
@@ -125,6 +129,9 @@
       </button>
     </div>
   </div>
+
+  <!-- Sync banner (injected by SyncManager when overdue) -->
+  <div id="syncBannerWrap"></div>
 
   <!-- Main -->
   <div id="main">
@@ -153,6 +160,7 @@
 <script src="js/readiness.js"></script>
 <script src="js/import.js"></script>
 <script src="js/settings.js"></script>
+<script src="js/sync.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

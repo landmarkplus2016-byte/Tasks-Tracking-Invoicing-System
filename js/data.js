@@ -147,6 +147,11 @@ function parseExcelFile(file) {
           // Need at least an id or site id to be a valid row
           if (!row.id && !row.logical_site_id && !row.job_code) continue;
 
+          // Normalise status
+          const { status, status_raw } = normalizeStatus(row.status);
+          row.status     = status;
+          row.status_raw = status_raw;
+
           rows.push(row);
         }
 
@@ -208,4 +213,21 @@ function pct(a, b) {
 /** Format integer with locale separator */
 function fmt(n) {
   return typeof n === 'number' ? n.toLocaleString() : (n || '—');
+}
+
+/**
+ * Normalise a raw Status cell value.
+ * Returns { status, status_raw } where status is one of:
+ *   'Done'        — raw contains: fac, approved, done
+ *   'Cancelled'   — raw contains: cancel, duplicat, transfer, wrong
+ *   'In Progress' — everything else
+ */
+function normalizeStatus(raw) {
+  if (!raw) return { status: null, status_raw: null };
+  const lc = String(raw).toLowerCase();
+  let status;
+  if (/fac|approved|done/.test(lc))                          status = 'Done';
+  else if (/cancel|duplicat|transfer|wrong/.test(lc))        status = 'Cancelled';
+  else                                                         status = 'In Progress';
+  return { status, status_raw: String(raw).trim() };
 }

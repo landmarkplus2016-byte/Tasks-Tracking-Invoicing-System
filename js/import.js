@@ -148,6 +148,11 @@ const ImportManager = (() => {
 
       if (!row.id && !row.logical_site_id && !row.job_code) continue;
 
+      // Normalise status
+      const { status, status_raw } = normalizeStatus(row.status);
+      row.status     = status;
+      row.status_raw = status_raw;
+
       // Line item matching + price calculation
       _applyLineItemMatch(row, priceList);
       if (typeof PriceList !== 'undefined') PriceList.calculateForRow(row);
@@ -521,6 +526,7 @@ const ImportManager = (() => {
     if (badge) badge.textContent = `${merged.length.toLocaleString()} rows · (imported)`;
 
     _pending = null;
+    if (typeof SyncManager !== 'undefined') SyncManager.markSynced();
     _cancel();
     showToast(toastMsg, 'success');
   }

@@ -126,6 +126,7 @@ function _launchApp(meta) {
     $uploadScreen.style.display = 'none';
     $appShell.style.display = 'block';
     _switchTab('dashboard');
+    SyncManager.init();
     showToast(`Loaded ${_rows.length.toLocaleString()} rows from "${meta.fileName}"`, 'success');
   }, 200);
 }
