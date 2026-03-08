@@ -155,6 +155,8 @@ function parseExcelFile(file) {
           rows.push(row);
         }
 
+        normalizeRowFields(rows);
+
         resolve({
           rows,
           fileName:   file.name,
@@ -213,6 +215,32 @@ function pct(a, b) {
 /** Format integer with locale separator */
 function fmt(n) {
   return typeof n === 'number' ? n.toLocaleString() : (n || '—');
+}
+
+/**
+ * Normalise text fields that should be stored in Title Case.
+ * Trims whitespace, collapses internal spaces, capitalises each word.
+ * e.g. 'alex', 'ALEX', 'ALEx' → 'Alex'; 'north coast' → 'North Coast'
+ */
+function normalizeTitleCase(s) {
+  if (!s) return s;
+  return String(s).trim()
+    .replace(/\s+/g, ' ')
+    .replace(/\b\w+/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+}
+
+/**
+ * Apply title-case normalisation to region, sub_region, and vendor
+ * fields on an array of row objects (mutates in place).
+ */
+function normalizeRowFields(rows) {
+  const TITLE_CASE_FIELDS = ['region', 'sub_region', 'vendor'];
+  for (const row of rows) {
+    for (const field of TITLE_CASE_FIELDS) {
+      if (row[field]) row[field] = normalizeTitleCase(row[field]);
+    }
+  }
+  return rows;
 }
 
 /**

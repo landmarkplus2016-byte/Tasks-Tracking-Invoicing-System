@@ -254,42 +254,50 @@ const UserManager = (() => {
     const folderId = _getFolderId();
     if (!folderId) return;
 
+    // ── Step 1: Read current file — abort if read fails ──────────
+    // IMPORTANT: if we cannot read, we must NOT save (would overwrite all other users' entries).
+    let active = [];
     try {
-      // Load the full historical list (never truncate — we keep all entries permanently)
-      let active = [];
-      try {
-        const raw = await GoogleDriveStorage.load(folderId, ACTIVE_FILE);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) active = parsed;
-        }
-      } catch(e) { /* file may not exist yet */ }
+      const raw = await GoogleDriveStorage.load(folderId, ACTIVE_FILE);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) active = parsed;
+        // else: file exists but corrupt → treat as empty, safe to overwrite
+      }
+      // raw === null means file doesn't exist yet → active stays []
+    } catch(e) {
+      // Network error, 403, etc. — do NOT save, just log
+      console.warn('[TTIS] Heartbeat read error (skipping write):', e.message);
+      return;
+    }
 
-      // Upsert self — match by id (primary key) with name fallback for legacy entries
-      const entry = {
-        id:         _user.id,
-        name:       _user.name,
-        initials:   _user.initials,
-        role:       _user.role,
-        lastActive: _user.lastActive
-      };
-      const idx = _user.id
-        ? active.findIndex(u => u.id === _user.id)
-        : active.findIndex(u => !u.id && u.name === _user.name);
+    // ── Step 2: Merge self into array ─────────────────────────────
+    const entry = {
+      id:         _user.id,
+      name:       _user.name,
+      initials:   _user.initials,
+      role:       _user.role,
+      lastActive: _user.lastActive
+    };
+    const idx = _user.id
+      ? active.findIndex(u => u.id === _user.id)
+      : active.findIndex(u => !u.id && u.name === _user.name);
 
-      if (idx >= 0) active[idx] = { ...active[idx], ...entry };
-      else          active.push(entry);
+    if (idx >= 0) active[idx] = { ...active[idx], ...entry };
+    else          active.push(entry);
 
+    // ── Step 3: Write back merged array ────────────────────────────
+    try {
       await GoogleDriveStorage.save(folderId, ACTIVE_FILE, JSON.stringify(active));
 
       // Avatar row: show only users active in the last 30 min
       const cutoff = Date.now() - ACTIVE_WINDOW;
       _renderAvatarRow(active.filter(u => new Date(u.lastActive).getTime() > cutoff));
 
-      // Merge full list into local all-users cache
+      // Sync into local all-users cache for Settings table
       active.forEach(u => _upsertAllUsers(u));
     } catch(e) {
-      console.warn('[TTIS] Heartbeat error:', e);
+      console.warn('[TTIS] Heartbeat write error:', e.message);
     }
   }
 
@@ -376,6 +384,8 @@ const UserManager = (() => {
 
   async function createInvite(name, role) {
     if (!name || !role) return null;
+    // Sync from Drive first so we don't overwrite other users' entries
+    await _syncFromDrive();
     // Don't overwrite an existing active user — just update their role
     const existing = _allUsers.find(u => u.name.toLowerCase().trim() === name.toLowerCase().trim() && !u._invited);
     if (existing) {
@@ -384,49 +394,37 @@ const UserManager = (() => {
     }
     const entry = { name, role, initials: _initials(name), _invited: true, lastActive: null };
     _upsertAllUsers(entry);
-    if (typeof GoogleDriveStorage !== 'undefined' && GoogleDriveStorage.isAuthorized()) {
-      const folderId = _getFolderId();
-      if (folderId) {
-        try { await GoogleDriveStorage.save(folderId, ACTIVE_FILE, JSON.stringify(_allUsers)); } catch(e) {}
-      }
-    }
+    await _saveToDrive();
     return entry;
   }
 
   async function revokeInvite(name) {
+    await _syncFromDrive();
     const idx = _allUsers.findIndex(u => u.name === name && u._invited);
     if (idx >= 0) {
       _allUsers.splice(idx, 1);
       localStorage.setItem(ALL_USERS_KEY, JSON.stringify(_allUsers));
-      if (typeof GoogleDriveStorage !== 'undefined' && GoogleDriveStorage.isAuthorized()) {
-        const folderId = _getFolderId();
-        if (folderId) {
-          try { await GoogleDriveStorage.save(folderId, ACTIVE_FILE, JSON.stringify(_allUsers)); } catch(e) {}
-        }
-      }
+      await _saveToDrive();
     }
   }
 
   // ── Delete user ────────────────────────────────────────
   // idOrName: pass user.id (preferred) or user.name (fallback)
   async function deleteUser(idOrName) {
+    await _syncFromDrive();
     const idx = _allUsers.findIndex(u =>
       (u.id && u.id === idOrName) || u.name === idOrName
     );
     if (idx < 0) return;
     _allUsers.splice(idx, 1);
     localStorage.setItem(ALL_USERS_KEY, JSON.stringify(_allUsers));
-    if (typeof GoogleDriveStorage !== 'undefined' && GoogleDriveStorage.isAuthorized()) {
-      const folderId = _getFolderId();
-      if (folderId) {
-        try { await GoogleDriveStorage.save(folderId, ACTIVE_FILE, JSON.stringify(_allUsers)); } catch(e) {}
-      }
-    }
+    await _saveToDrive();
   }
 
   // ── Save user permissions ──────────────────────────────
   // idOrName: pass user.id (preferred) or user.name (fallback)
   async function saveUserPermissions(idOrName, permissions) {
+    await _syncFromDrive();
     const idx = _allUsers.findIndex(u =>
       (u.id && u.id === idOrName) || u.name === idOrName
     );
@@ -441,11 +439,33 @@ const UserManager = (() => {
       applyAccess();
     }
 
-    if (typeof GoogleDriveStorage !== 'undefined' && GoogleDriveStorage.isAuthorized()) {
-      const folderId = _getFolderId();
-      if (folderId) {
-        try { await GoogleDriveStorage.save(folderId, ACTIVE_FILE, JSON.stringify(_allUsers)); } catch(e) {}
+    await _saveToDrive();
+  }
+
+  // ── Drive helpers: sync-then-modify pattern ────────────
+  // Call _syncFromDrive() before any write that modifies _allUsers,
+  // so we never save a stale local copy that's missing other users' entries.
+  async function _syncFromDrive() {
+    if (typeof GoogleDriveStorage === 'undefined' || !GoogleDriveStorage.isAuthorized()) return;
+    const folderId = _getFolderId();
+    if (!folderId) return;
+    try {
+      const raw = await GoogleDriveStorage.load(folderId, ACTIVE_FILE);
+      if (raw) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) list.forEach(u => _upsertAllUsers(u));
       }
+    } catch(e) {
+      console.warn('[TTIS] _syncFromDrive error:', e.message);
+    }
+  }
+
+  async function _saveToDrive() {
+    if (typeof GoogleDriveStorage === 'undefined' || !GoogleDriveStorage.isAuthorized()) return;
+    const folderId = _getFolderId();
+    if (!folderId) return;
+    try { await GoogleDriveStorage.save(folderId, ACTIVE_FILE, JSON.stringify(_allUsers)); } catch(e) {
+      console.warn('[TTIS] _saveToDrive error:', e.message);
     }
   }
 
@@ -478,6 +498,7 @@ const UserManager = (() => {
   }
 
   async function updateUserRole(idOrName, newRole) {
+    await _syncFromDrive();
     const idx = _allUsers.findIndex(u =>
       (u.id && u.id === idOrName) || u.name === idOrName
     );
@@ -491,12 +512,7 @@ const UserManager = (() => {
       applyAccess();
     }
 
-    if (typeof GoogleDriveStorage !== 'undefined' && GoogleDriveStorage.isAuthorized()) {
-      const folderId = _getFolderId();
-      if (folderId) {
-        try { await GoogleDriveStorage.save(folderId, ACTIVE_FILE, JSON.stringify(_allUsers)); } catch(e) {}
-      }
-    }
+    await _saveToDrive();
   }
 
   // ── Audit trail helpers ────────────────────────────────
@@ -541,7 +557,9 @@ const UserManager = (() => {
     deleteUser, saveUserPermissions,
     stampCreated, stampUpdated,
     writePresence,
-    renderAvatarRow: _renderAvatarRow
+    renderAvatarRow: _renderAvatarRow,
+    // Exposes in-memory cache for import.js active-user warning
+    _getAllUsersCache: () => _allUsers
   };
 
 })();

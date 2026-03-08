@@ -340,6 +340,9 @@ async function _tryLoadFromDrive(opts = {}) {
       return { loaded: false, error: 'tasks.json exists but contains no rows.' };
     }
 
+    // Normalise region / sub_region / vendor to Title Case
+    if (typeof normalizeRowFields !== 'undefined') normalizeRowFields(rows);
+
     _rows = rows;
     _showProgress('Rendering app…', 85);
     await new Promise(r => setTimeout(r, 120));

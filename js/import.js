@@ -259,6 +259,7 @@ const ImportManager = (() => {
 
       rows.push(row);
     }
+    if (typeof normalizeRowFields !== 'undefined') normalizeRowFields(rows);
     return rows;
   }
 
