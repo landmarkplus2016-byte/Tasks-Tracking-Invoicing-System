@@ -154,6 +154,15 @@ const Settings = (() => {
           ${_plCardHtml()}
         </div>
 
+        <!-- Users card -->
+        <div class="stg-card">
+          <div class="stg-card-header">
+            <div class="stg-card-title">Users</div>
+            <div class="stg-card-sub">All users who have ever logged in — change roles or update your own identity</div>
+          </div>
+          <div id="stgUsersCard">${_usersCardHtml([])}</div>
+        </div>
+
         <!-- Stored config preview card -->
         <div class="stg-card">
           <div class="stg-card-header">
@@ -166,6 +175,8 @@ const Settings = (() => {
       </div>`;
 
     _bindEvents();
+    // Async: populate users card after render
+    _refreshUsersCard();
   }
 
   function _providerBtn(id, label, icon, hint) {
@@ -562,6 +573,58 @@ const Settings = (() => {
 
       overlay.remove();
       showToast(`Recalculated prices for ${updatedCount.toLocaleString()} task${updatedCount !== 1 ? 's' : ''}`, 'success');
+    });
+  }
+
+  // ── Users card ─────────────────────────────────────────
+  function _usersCardHtml(users) {
+    const isAdmin = typeof UserManager !== 'undefined' && UserManager.isAdmin();
+    const me      = typeof UserManager !== 'undefined' ? UserManager.getUser() : null;
+
+    const rows = users.length ? users.map(u => {
+      const isSelf   = me && u.name === me.name;
+      const lastSeen = u.lastActive ? new Date(u.lastActive).toLocaleString() : '—';
+      const roleOpts = ['Admin','Viewer'].map(r =>
+        `<option value="${r}"${u.role === r ? ' selected' : ''}>${r}</option>`).join('');
+      return `<tr class="${isSelf ? 'stg-users-self' : ''}">
+        <td>${_esc(u.name)}${isSelf ? ' <span class="stg-users-you">You</span>' : ''}</td>
+        <td>${isAdmin
+          ? `<select class="stg-users-role-sel" data-name="${_esc(u.name)}">${roleOpts}</select>`
+          : `<span class="stg-users-role">${_esc(u.role||'')}</span>`}</td>
+        <td class="stg-users-last">${lastSeen}</td>
+      </tr>`;
+    }).join('') : `<tr><td colspan="3" class="stg-users-empty">No users recorded yet</td></tr>`;
+
+    return `
+      <div class="stg-users-wrap">
+        <div class="stg-users-actions">
+          <button class="stg-btn stg-btn-test" id="stgUsersRefreshBtn">&#8635; Refresh</button>
+          <button class="stg-btn stg-btn-save" id="stgUsersChangeBtn" onclick="UserManager.showChangeIdentityModal()">&#9997; Change My Name/Role</button>
+          ${isAdmin && users.length ? '<button class="stg-btn stg-btn-export" id="stgUsersSaveRolesBtn">Save Role Changes</button>' : ''}
+        </div>
+        <table class="stg-users-tbl">
+          <thead><tr><th>Name</th><th>Role</th><th>Last Active</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }
+
+  async function _refreshUsersCard() {
+    const el = document.getElementById('stgUsersCard');
+    if (!el) return;
+    const users = typeof UserManager !== 'undefined' ? await UserManager.getAllUsers() : [];
+    el.innerHTML = _usersCardHtml(users);
+    _bindUsersCardEvents();
+  }
+
+  function _bindUsersCardEvents() {
+    document.getElementById('stgUsersRefreshBtn')?.addEventListener('click', _refreshUsersCard);
+    document.getElementById('stgUsersSaveRolesBtn')?.addEventListener('click', async () => {
+      const selects = document.querySelectorAll('.stg-users-role-sel');
+      for (const sel of selects) {
+        await UserManager.updateUserRole(sel.dataset.name, sel.value);
+      }
+      showToast('Role changes saved', 'success');
     });
   }
 

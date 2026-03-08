@@ -29,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $dataBadge          = document.getElementById('dataBadge');
 
   PriceList.init();
+  UserManager.init();
   _bindUploadEvents();
   _bindTabEvents();
   _bindReloadBtn();
@@ -127,6 +128,7 @@ function _launchApp(meta) {
     $appShell.style.display = 'block';
     _switchTab('dashboard');
     SyncManager.init();
+    UserManager.applyAccess();
     showToast(`Loaded ${_rows.length.toLocaleString()} rows from "${meta.fileName}"`, 'success');
   }, 200);
 }

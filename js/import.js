@@ -501,12 +501,15 @@ const ImportManager = (() => {
 
     if (p.mode === 'first') {
       // Full load — replace everything with the imported rows
+      if (typeof UserManager !== 'undefined') p.loadedRows.forEach(r => UserManager.stampCreated(r));
       merged   = p.loadedRows;
       toastMsg = `First import complete — ${merged.length.toLocaleString()} tasks loaded`;
     } else {
       // Update mode — patch existing + append new
+      if (typeof UserManager !== 'undefined') p.newRows.forEach(r => UserManager.stampCreated(r));
       const existingById = new Map(_currentRows.map(r => [String(r.id||''), r]));
       for (const { updated } of p.changedRows) {
+        if (typeof UserManager !== 'undefined') UserManager.stampUpdated(updated);
         const id = String(updated.id || '');
         if (existingById.has(id)) Object.assign(existingById.get(id), updated);
       }

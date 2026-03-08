@@ -1,0 +1,327 @@
+/* ══════════════════════════════════════════════════════
+   TTIS — users.js  |  User identity, access control,
+                       presence heartbeat, audit trail
+   ══════════════════════════════════════════════════════ */
+
+'use strict';
+
+const UserManager = (() => {
+
+  const USER_KEY        = 'TTIS_USER';
+  const ALL_USERS_KEY   = 'TTIS_ALL_USERS';
+  const HEARTBEAT_MS    = 5 * 60 * 1000;   // 5 minutes
+  const ACTIVE_WINDOW   = 30 * 60 * 1000;  // 30 minutes
+  const ACTIVE_FILE     = 'active_users.json';
+
+  const AVATAR_COLORS = [
+    '#1a56db','#7c3aed','#db2777','#d97706',
+    '#059669','#dc2626','#0891b2','#7d6608'
+  ];
+
+  let _user       = null;
+  let _allUsers   = [];
+  let _hbTimer    = null;
+  let _lastAct    = 0;
+
+  // ── Init ───────────────────────────────────────────────
+  function init() {
+    try { const s = localStorage.getItem(USER_KEY);      if (s) _user     = JSON.parse(s); } catch(e) {}
+    try { const s = localStorage.getItem(ALL_USERS_KEY); if (s) _allUsers = JSON.parse(s); } catch(e) {}
+
+    if (!_user || !_user.name || !_user.role) {
+      _showWelcomeModal();
+    } else {
+      _updateLastActive();
+      _startHeartbeat();
+    }
+  }
+
+  // ── Getters ────────────────────────────────────────────
+  function getUser()   { return _user; }
+  function isAdmin()   { return _user?.role === 'Admin'; }
+  function isViewer()  { return _user?.role === 'Viewer'; }
+  function getName()   { return _user?.name  || 'Unknown'; }
+  function nowIso()    { return new Date().toISOString(); }
+
+  // ── Access control ─────────────────────────────────────
+  function applyAccess() {
+    if (isAdmin()) {
+      document.querySelectorAll('.admin-only').forEach(el => el.style.removeProperty('display'));
+      return;
+    }
+    // Viewer: hide admin controls
+    document.querySelectorAll('.admin-only').forEach(el => { el.style.display = 'none'; });
+
+    // Intercept Settings tab
+    document.querySelectorAll('.tab-btn[data-tab="settings"]').forEach(btn => {
+      btn.onclick = e => {
+        e.stopImmediatePropagation();
+        showToast('Admin access required', 'error');
+      };
+    });
+  }
+
+  // ── Welcome modal ──────────────────────────────────────
+  function _showWelcomeModal() {
+    document.getElementById('userWelcomeModal').style.display = 'flex';
+    setTimeout(() => document.getElementById('uwName')?.focus(), 50);
+  }
+
+  function submitWelcome() {
+    const nameEl  = document.getElementById('uwName');
+    const roleEl  = document.getElementById('uwRole');
+    const nameErr = document.getElementById('uwNameErr');
+    const roleErr = document.getElementById('uwRoleErr');
+
+    nameErr.style.display = 'none';
+    roleErr.style.display = 'none';
+
+    const name = (nameEl?.value || '').trim();
+    const role = roleEl?.value || '';
+    let ok = true;
+    if (!name) { nameErr.style.display = 'block'; ok = false; }
+    if (!role) { roleErr.style.display = 'block'; ok = false; }
+    if (!ok) return;
+
+    _setUser(name, role);
+    document.getElementById('userWelcomeModal').style.display = 'none';
+    _startHeartbeat();
+    showToast(`Welcome, ${name}!`, 'success');
+    _tryAutoAuthorize();
+  }
+
+  function _setUser(name, role) {
+    _user = {
+      name,
+      role,
+      initials:   _initials(name),
+      lastActive: nowIso()
+    };
+    localStorage.setItem(USER_KEY, JSON.stringify(_user));
+    _upsertAllUsers(_user);
+  }
+
+  // ── Change identity modal ──────────────────────────────
+  function showChangeIdentityModal() {
+    const modal = document.getElementById('userChangeModal');
+    if (!modal) return;
+    document.getElementById('ciName').value = _user?.name || '';
+    document.getElementById('ciRole').value = _user?.role || 'Viewer';
+    document.getElementById('ciNameErr').style.display = 'none';
+    modal.style.display = 'flex';
+    setTimeout(() => document.getElementById('ciName')?.focus(), 50);
+  }
+
+  function hideChangeIdentityModal() {
+    document.getElementById('userChangeModal').style.display = 'none';
+  }
+
+  function submitChangeIdentity() {
+    const name = (document.getElementById('ciName')?.value || '').trim();
+    const role = document.getElementById('ciRole')?.value || '';
+    const err  = document.getElementById('ciNameErr');
+    err.style.display = 'none';
+    if (!name) { err.style.display = 'block'; return; }
+    _setUser(name, role);
+    hideChangeIdentityModal();
+    applyAccess();
+    _renderAvatarRow([_user]);
+    showToast(`Identity updated: ${name} (${role})`, 'success');
+  }
+
+  // ── Auto Google Drive authorization ───────────────────
+  async function _tryAutoAuthorize() {
+    if (typeof GoogleDriveStorage === 'undefined') return;
+    if (GoogleDriveStorage.isAuthorized()) {
+      // Already authorized — just fire a heartbeat immediately
+      _sendHeartbeat();
+      return;
+    }
+    if (!GoogleDriveStorage.isReady()) return;
+
+    // Small delay so the welcome toast is visible before the OAuth popup
+    await new Promise(r => setTimeout(r, 600));
+
+    try {
+      showToast('Connecting to Google Drive…', 'info');
+      await GoogleDriveStorage.authorize();
+      showToast('Google Drive connected', 'success');
+      _sendHeartbeat();
+    } catch(e) {
+      // User may have closed the popup — non-fatal, Drive features just won't work
+      console.warn('[TTIS] Auto Drive auth skipped:', e.message);
+    }
+  }
+
+  // ── Heartbeat + presence ───────────────────────────────
+  function _startHeartbeat() {
+    _sendHeartbeat();
+    _hbTimer = setInterval(_sendHeartbeat, HEARTBEAT_MS);
+    document.addEventListener('click',   _onActivity, { passive: true });
+    document.addEventListener('keydown', _onActivity, { passive: true });
+  }
+
+  function _onActivity() {
+    const now = Date.now();
+    if (now - _lastAct > 60000) {
+      _lastAct = now;
+      _updateLastActive();
+    }
+  }
+
+  function _updateLastActive() {
+    if (!_user) return;
+    _user.lastActive = nowIso();
+    localStorage.setItem(USER_KEY, JSON.stringify(_user));
+    _upsertAllUsers(_user);
+  }
+
+  async function _sendHeartbeat() {
+    _updateLastActive();
+    _renderAvatarRow([_user]);
+
+    if (typeof GoogleDriveStorage === 'undefined' || !GoogleDriveStorage.isAuthorized()) return;
+
+    const folderId = _getFolderId();
+    if (!folderId) return;
+
+    try {
+      let active = [];
+      try {
+        const raw = await GoogleDriveStorage.load(folderId, ACTIVE_FILE);
+        active = JSON.parse(raw);
+        if (!Array.isArray(active)) active = [];
+      } catch(e) { /* file may not exist yet */ }
+
+      // Upsert self
+      const entry = { name: _user.name, initials: _user.initials, role: _user.role, lastActive: _user.lastActive };
+      const idx   = active.findIndex(u => u.name === _user.name);
+      if (idx >= 0) active[idx] = entry; else active.push(entry);
+
+      await GoogleDriveStorage.save(folderId, ACTIVE_FILE, JSON.stringify(active));
+
+      // Render all active in the last 30 min
+      const cutoff = Date.now() - ACTIVE_WINDOW;
+      _renderAvatarRow(active.filter(u => new Date(u.lastActive).getTime() > cutoff));
+
+      // Merge into local all-users cache
+      active.forEach(u => _upsertAllUsers(u));
+    } catch(e) {
+      console.warn('[TTIS] Heartbeat error:', e);
+    }
+  }
+
+  function _getFolderId() {
+    try { return JSON.parse(localStorage.getItem('TTIS_CONFIG') || '{}').gdsync?.folderId || ''; }
+    catch(e) { return ''; }
+  }
+
+  // ── Avatar row ─────────────────────────────────────────
+  function _renderAvatarRow(users) {
+    const el = document.getElementById('activeUserAvatars');
+    if (!el || !users.length) return;
+
+    const sorted = [...users].sort((a, b) => {
+      if (a.name === _user?.name) return -1;
+      if (b.name === _user?.name) return 1;
+      return new Date(b.lastActive) - new Date(a.lastActive);
+    });
+
+    el.innerHTML = sorted.slice(0, 6).map(u => {
+      const isSelf = u.name === _user?.name;
+      const tip    = `${u.name} (${u.role})${isSelf ? ' — You' : ''}`;
+      const color  = _colorFor(u.initials || u.name?.slice(0,2) || '?');
+      const inits  = _esc(u.initials || (u.name || '').slice(0,2).toUpperCase() || '?');
+      return `<div class="user-avatar${isSelf ? ' user-avatar-self' : ''}" style="background:${color}" title="${_esc(tip)}">${inits}</div>`;
+    }).join('');
+
+    if (sorted.length > 6) {
+      el.innerHTML += `<div class="user-avatar user-avatar-more" title="${sorted.length - 6} more active">+${sorted.length - 6}</div>`;
+    }
+  }
+
+  // ── All-users cache ────────────────────────────────────
+  function _upsertAllUsers(u) {
+    const idx = _allUsers.findIndex(x => x.name === u.name);
+    if (idx >= 0) _allUsers[idx] = { ..._allUsers[idx], ...u };
+    else          _allUsers.push({ ...u });
+    try { localStorage.setItem(ALL_USERS_KEY, JSON.stringify(_allUsers)); } catch(e) {}
+  }
+
+  async function getAllUsers() {
+    if (typeof GoogleDriveStorage !== 'undefined' && GoogleDriveStorage.isAuthorized()) {
+      const folderId = _getFolderId();
+      if (folderId) {
+        try {
+          const raw  = await GoogleDriveStorage.load(folderId, ACTIVE_FILE);
+          const list = JSON.parse(raw);
+          if (Array.isArray(list)) list.forEach(u => _upsertAllUsers(u));
+        } catch(e) {}
+      }
+    }
+    return _allUsers;
+  }
+
+  async function updateUserRole(name, newRole) {
+    const idx = _allUsers.findIndex(u => u.name === name);
+    if (idx < 0) return;
+    _allUsers[idx].role = newRole;
+    localStorage.setItem(ALL_USERS_KEY, JSON.stringify(_allUsers));
+
+    if (_user && _user.name === name) {
+      _user.role = newRole;
+      localStorage.setItem(USER_KEY, JSON.stringify(_user));
+      applyAccess();
+    }
+
+    if (typeof GoogleDriveStorage !== 'undefined' && GoogleDriveStorage.isAuthorized()) {
+      const folderId = _getFolderId();
+      if (folderId) {
+        try { await GoogleDriveStorage.save(folderId, ACTIVE_FILE, JSON.stringify(_allUsers)); } catch(e) {}
+      }
+    }
+  }
+
+  // ── Audit trail helpers ────────────────────────────────
+  function stampCreated(row) {
+    if (!row.created_by) {
+      row.created_by = getName();
+      row.created_at = nowIso();
+    }
+    row.updated_by = getName();
+    row.updated_at = nowIso();
+  }
+
+  function stampUpdated(row) {
+    if (!row.created_by) {
+      row.created_by = getName();
+      row.created_at = nowIso();
+    }
+    row.updated_by = getName();
+    row.updated_at = nowIso();
+  }
+
+  // ── Utility ────────────────────────────────────────────
+  function _initials(name) {
+    return (name || '').trim().split(/\s+/).map(w => w[0] || '').join('').toUpperCase().slice(0, 2);
+  }
+
+  function _colorFor(str) {
+    let h = 0;
+    for (const c of String(str)) h = (h * 31 + c.charCodeAt(0)) & 0x7fffffff;
+    return AVATAR_COLORS[h % AVATAR_COLORS.length];
+  }
+
+  // ── Public API ─────────────────────────────────────────
+  return {
+    init,
+    getUser, isAdmin, isViewer, getName,
+    applyAccess,
+    submitWelcome,
+    showChangeIdentityModal, hideChangeIdentityModal, submitChangeIdentity,
+    getAllUsers, updateUserRole,
+    stampCreated, stampUpdated,
+    renderAvatarRow: _renderAvatarRow
+  };
+
+})();

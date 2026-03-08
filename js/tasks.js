@@ -182,7 +182,7 @@ const Tasks = (() => {
         <div class="empty-state-text">No matching records</div></td></tr>`;
     } else {
       tbody.innerHTML = slice.map(r => `
-        <tr>
+        <tr${_auditTitle(r)}>
           <td>${_esc(r.id || '')}</td>
           <td>${_esc(r.job_code || '')}</td>
           <td>${_esc(r.logical_site_id || '')}</td>
@@ -273,6 +273,14 @@ function _esc(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function _auditTitle(r) {
+  const parts = [];
+  if (r.created_by) parts.push(`Created by ${r.created_by}${r.created_at ? ' · ' + new Date(r.created_at).toLocaleString() : ''}`);
+  if (r.updated_by) parts.push(`Updated by ${r.updated_by}${r.updated_at ? ' · ' + new Date(r.updated_at).toLocaleString() : ''}`);
+  if (!parts.length) return '';
+  return ` class="row-audited" title="${_esc(parts.join('\n'))}"`;
 }
 
 function _renderPagination(id, cur, total, cb) {

@@ -84,6 +84,63 @@
   </div>
 </div>
 
+<!-- ══ WELCOME MODAL ══ -->
+<div id="userWelcomeModal" class="um-overlay" style="display:none">
+  <div class="um-dialog">
+    <div class="um-logo">
+      <svg width="28" height="28" viewBox="0 0 36 36" fill="none">
+        <rect x="2" y="2" width="32" height="32" rx="6" stroke="#1a56db" stroke-width="1.5" stroke-dasharray="4 2"/>
+        <path d="M10 18 L18 10 L26 18" stroke="#1a56db" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M18 10 L18 26" stroke="#1a56db" stroke-width="2" stroke-linecap="round"/>
+        <path d="M12 26 L24 26" stroke="#1a56db" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="um-title">Welcome to TTIS</div>
+    <div class="um-sub">Please enter your name and select your role to get started.</div>
+    <div class="um-field-group">
+      <label class="um-label">Full Name</label>
+      <input class="um-input" id="uwName" type="text" placeholder="e.g. Ahmed Hassan"
+             autocomplete="off" onkeydown="if(event.key==='Enter') UserManager.submitWelcome()">
+      <div class="um-err" id="uwNameErr">Full name is required</div>
+    </div>
+    <div class="um-field-group">
+      <label class="um-label">Role</label>
+      <select class="um-select" id="uwRole">
+        <option value="">— Select a role —</option>
+        <option value="Admin">Admin</option>
+        <option value="Viewer">Viewer</option>
+      </select>
+      <div class="um-err" id="uwRoleErr">Please select a role</div>
+    </div>
+    <button class="um-submit" onclick="UserManager.submitWelcome()">Continue</button>
+  </div>
+</div>
+
+<!-- ══ CHANGE IDENTITY MODAL ══ -->
+<div id="userChangeModal" class="um-overlay" style="display:none">
+  <div class="um-dialog">
+    <div class="um-title">Change My Identity</div>
+    <div class="um-sub">Update your display name or role.</div>
+    <div class="um-field-group">
+      <label class="um-label">Full Name</label>
+      <input class="um-input" id="ciName" type="text" autocomplete="off"
+             onkeydown="if(event.key==='Enter') UserManager.submitChangeIdentity()">
+      <div class="um-err" id="ciNameErr">Full name is required</div>
+    </div>
+    <div class="um-field-group">
+      <label class="um-label">Role</label>
+      <select class="um-select" id="ciRole">
+        <option value="Admin">Admin</option>
+        <option value="Viewer">Viewer</option>
+      </select>
+    </div>
+    <div class="um-actions">
+      <button class="um-cancel" onclick="UserManager.hideChangeIdentityModal()">Cancel</button>
+      <button class="um-submit" onclick="UserManager.submitChangeIdentity()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ APP SHELL ══ -->
 <div id="appShell" style="display:none">
 
@@ -108,19 +165,22 @@
       <button class="tab-btn" data-tab="tasks">Tasks</button>
       <button class="tab-btn" data-tab="invoicing">Invoicing</button>
       <button class="tab-btn" data-tab="readiness">Invoice Readiness</button>
-      <button class="tab-btn" data-tab="settings">Settings</button>
+      <button class="tab-btn admin-only" data-tab="settings">Settings</button>
     </div>
 
     <div class="header-right">
+      <!-- Active user avatars -->
+      <div class="user-avatar-row" id="activeUserAvatars"></div>
+
       <div class="data-badge" id="dataBadge"></div>
       <div id="syncStatus" class="sync-status-badge sync-status-never" title="No sync yet"></div>
-      <button class="force-refresh-btn" onclick="ImportManager.open()" title="Force an immediate sync with PC_Tracking file">
+      <button class="force-refresh-btn admin-only" onclick="ImportManager.open()" title="Force an immediate sync with PC_Tracking file">
         &#8635; Force Refresh
       </button>
-      <button class="import-pc-btn" onclick="ImportManager.open()" title="Import from PC Tracking file">
+      <button class="import-pc-btn admin-only" onclick="ImportManager.open()" title="Import from PC Tracking file">
         &#8679; Import PC
       </button>
-      <button class="reload-btn" id="reloadBtn" title="Load a different file">
+      <button class="reload-btn admin-only" id="reloadBtn" title="Load a different file">
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <path d="M12 7A5 5 0 112 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
           <path d="M12 3v4h-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -161,6 +221,7 @@
 <script src="js/import.js"></script>
 <script src="js/settings.js"></script>
 <script src="js/sync.js"></script>
+<script src="js/users.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
