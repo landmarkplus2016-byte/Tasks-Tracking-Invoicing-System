@@ -1821,3 +1821,117 @@ tr.r-row-needpo:hover td { background: rgba(217,119,6,.08) !important; }
   margin-top: 4px;
   font-weight: 500;
 }
+
+/* ══ Users table — delete button ══════════════════════════ */
+.stg-users-delete {
+  background: none;
+  border: 1px solid rgba(220,38,38,.3);
+  color: #dc2626;
+  border-radius: 4px;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .15s, border-color .15s;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+.stg-users-delete:hover {
+  background: rgba(220,38,38,.1);
+  border-color: #dc2626;
+}
+.stg-users-action-cell {
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* ══ Edit Permissions button ═══════════════════════════════ */
+.stg-btn-perms {
+  background: rgba(26,86,219,.07);
+  border: 1px solid rgba(26,86,219,.22);
+  color: #1a56db;
+  border-radius: 5px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .15s;
+}
+.stg-btn-perms:hover { background: rgba(26,86,219,.14); }
+
+/* ══ Permissions editor modal ══════════════════════════════ */
+.stg-perms-dialog {
+  width: 460px;
+  max-width: 95vw;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+.stg-perms-role-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  font-size: 13px;
+  color: var(--text2);
+}
+.stg-perms-section { margin-bottom: 20px; }
+.stg-perms-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--text2);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+}
+.perms-check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 6px 4px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background .1s;
+}
+.perms-check-row:hover:not(.perms-disabled) { background: rgba(26,86,219,.04); }
+.perms-check-row input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  cursor: pointer;
+  accent-color: var(--cyan);
+}
+.perms-check-row.perms-disabled { opacity: .5; cursor: not-allowed; }
+.perms-check-row.perms-disabled input { cursor: not-allowed; }
+.perms-check-info { display: flex; flex-direction: column; gap: 2px; }
+.perms-check-label { font-size: 13px; font-weight: 500; color: var(--text); }
+.perms-check-hint  { font-size: 11px; color: var(--text2); }
+.perms-admin-only {
+  display: inline-block;
+  font-size: 10px;
+  background: rgba(217,119,6,.12);
+  color: #d97706;
+  border-radius: 3px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  font-weight: 600;
+  letter-spacing: .4px;
+  text-transform: uppercase;
+}
+
+/* ══ Field lock icon ═══════════════════════════════════════ */
+.field-lock {
+  display: inline-block;
+  font-size: 12px;
+  opacity: .45;
+  cursor: help;
+  margin-left: 4px;
+  vertical-align: middle;
+  user-select: none;
+}

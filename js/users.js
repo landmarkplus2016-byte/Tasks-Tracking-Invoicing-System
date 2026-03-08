@@ -18,6 +18,28 @@ const UserManager = (() => {
     '#059669','#dc2626','#0891b2','#7d6608'
   ];
 
+  // ── Default permissions by role ────────────────────────
+  function _defaultPerms(role) {
+    const admin  = role === 'Admin';
+    const editor = role === 'Editor';
+    return {
+      tabs: {
+        dashboard: true,
+        tasks:     true,
+        invoicing: true,
+        readiness: true,
+        settings:  admin
+      },
+      fields: {
+        taskInfo:   admin || editor,
+        financial:  admin,
+        acceptance: admin || editor,
+        invoicing:  admin || editor,
+        allFields:  admin
+      }
+    };
+  }
+
   let _user       = null;
   let _allUsers   = [];
   let _hbTimer    = null;
@@ -54,9 +76,10 @@ const UserManager = (() => {
   //          Editor — Force Refresh + edit tasks; no Settings/Import/Load
   //          Viewer — read-only
   function applyAccess() {
-    const role     = _user?.role || 'Viewer';
-    const admin    = role === 'Admin';
-    const editor   = role === 'Editor';
+    const role   = _user?.role || 'Viewer';
+    const admin  = role === 'Admin';
+    const editor = role === 'Editor';
+    const perms  = _user?.permissions || _defaultPerms(role);
 
     // perm-admin: Admin only
     document.querySelectorAll('.perm-admin').forEach(el => {
@@ -70,6 +93,23 @@ const UserManager = (() => {
     document.querySelectorAll('.admin-only').forEach(el => {
       el.style.display = admin ? '' : 'none';
     });
+
+    // Granular tab access (dashboard / tasks / invoicing / readiness)
+    ['dashboard', 'tasks', 'invoicing', 'readiness'].forEach(tabId => {
+      const allowed = perms.tabs?.[tabId] !== false;
+      document.querySelectorAll(`.tab-btn[data-tab="${tabId}"]`).forEach(btn => {
+        btn.style.display = allowed ? '' : 'none';
+      });
+    });
+    // Settings tab is governed by perm-admin class above
+  }
+
+  // ── canEdit — field-group permission check ─────────────
+  function canEdit(group) {
+    if (!_user) return false;
+    const perms = _user.permissions || _defaultPerms(_user.role || 'Viewer');
+    if (perms.fields.allFields) return true;
+    return !!perms.fields[group];
   }
 
   // ── Welcome modal ──────────────────────────────────────
@@ -299,6 +339,42 @@ const UserManager = (() => {
     }
   }
 
+  // ── Delete user ────────────────────────────────────────
+  async function deleteUser(name) {
+    const idx = _allUsers.findIndex(u => u.name === name);
+    if (idx < 0) return;
+    _allUsers.splice(idx, 1);
+    localStorage.setItem(ALL_USERS_KEY, JSON.stringify(_allUsers));
+    if (typeof GoogleDriveStorage !== 'undefined' && GoogleDriveStorage.isAuthorized()) {
+      const folderId = _getFolderId();
+      if (folderId) {
+        try { await GoogleDriveStorage.save(folderId, ACTIVE_FILE, JSON.stringify(_allUsers)); } catch(e) {}
+      }
+    }
+  }
+
+  // ── Save user permissions ──────────────────────────────
+  async function saveUserPermissions(name, permissions) {
+    const idx = _allUsers.findIndex(u => u.name === name);
+    if (idx < 0) return;
+    _allUsers[idx].permissions = permissions;
+    localStorage.setItem(ALL_USERS_KEY, JSON.stringify(_allUsers));
+
+    // If editing self, update live user object and re-apply access
+    if (_user && _user.name === name) {
+      _user.permissions = permissions;
+      localStorage.setItem(USER_KEY, JSON.stringify(_user));
+      applyAccess();
+    }
+
+    if (typeof GoogleDriveStorage !== 'undefined' && GoogleDriveStorage.isAuthorized()) {
+      const folderId = _getFolderId();
+      if (folderId) {
+        try { await GoogleDriveStorage.save(folderId, ACTIVE_FILE, JSON.stringify(_allUsers)); } catch(e) {}
+      }
+    }
+  }
+
   // ── All-users cache ────────────────────────────────────
   function _upsertAllUsers(u) {
     const idx = _allUsers.findIndex(x => x.name === u.name);
@@ -375,11 +451,12 @@ const UserManager = (() => {
   return {
     init,
     getUser, isAdmin, isEditor, isViewer, getName,
-    applyAccess,
+    applyAccess, canEdit,
     submitWelcome, checkWelcomeInvite,
     showChangeIdentityModal, hideChangeIdentityModal, submitChangeIdentity,
     getAllUsers, updateUserRole,
     createInvite, revokeInvite,
+    deleteUser, saveUserPermissions,
     stampCreated, stampUpdated,
     renderAvatarRow: _renderAvatarRow
   };

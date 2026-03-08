@@ -226,13 +226,18 @@ async function _tryLoadFromDrive() {
     if (!GoogleDriveStorage.isReady()) return false;
   }
 
-  // Attempt a silent token (prompt:'') — no popup; rejects if not possible
+  // Attempt a silent token first; if that fails, try explicit auth (account picker).
+  // This ensures new users (no prior token) still auto-load from Drive after welcome modal.
   if (!GoogleDriveStorage.isAuthorized()) {
     try {
       await GoogleDriveStorage.authorize({ prompt: '' });
     } catch(e) {
-      // Silent auth unavailable — show upload screen, user can auth manually
-      return false;
+      try {
+        await GoogleDriveStorage.authorize({ prompt: 'select_account' });
+      } catch(e2) {
+        // User cancelled or authorization unavailable — stay on upload screen
+        return false;
+      }
     }
   }
 

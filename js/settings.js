@@ -597,28 +597,30 @@ const Settings = (() => {
   function _usersCardHtml(users) {
     const isAdmin = typeof UserManager !== 'undefined' && UserManager.isAdmin();
     const me      = typeof UserManager !== 'undefined' ? UserManager.getUser() : null;
-    const ALL_ROLES = ['Admin', 'Editor', 'Viewer'];
 
     const rows = users.length ? users.map(u => {
       const isSelf    = me && u.name === me.name;
       const isPending = !!u._invited;
-      const roleOpts  = ALL_ROLES.map(r =>
-        `<option value="${r}"${u.role === r ? ' selected' : ''}>${r}</option>`).join('');
       const lastCell  = isPending
         ? '<span class="stg-invite-tag">Pending Invite</span>'
         : (u.lastActive ? new Date(u.lastActive).toLocaleString() : '—');
-      const roleCell  = isAdmin && !isPending
-        ? `<select class="stg-users-role-sel" data-name="${_esc(u.name)}">${roleOpts}</select>`
-        : `<span class="stg-role-badge stg-role-${(u.role||'').toLowerCase()}">${_esc(u.role||'')}</span>`;
-      const actionCell = isPending
-        ? `<button class="stg-btn stg-invite-revoke" data-name="${_esc(u.name)}">Revoke</button>`
-        : '';
+      const roleBadge = `<span class="stg-role-badge stg-role-${(u.role||'').toLowerCase()}">${_esc(u.role||'')}</span>`;
+
+      let actionHtml = '';
+      if (isPending) {
+        actionHtml = `<button class="stg-btn stg-invite-revoke" data-name="${_esc(u.name)}">Revoke</button>`;
+      } else if (isAdmin) {
+        actionHtml = `
+          <button class="stg-btn stg-btn-perms" data-name="${_esc(u.name)}">Edit Permissions</button>
+          ${!isSelf ? `<button class="stg-users-delete" data-name="${_esc(u.name)}" title="Remove ${_esc(u.name)} from the system">\u2715</button>` : ''}`;
+      }
+
       return `<tr class="${isSelf ? 'stg-users-self' : ''}${isPending ? ' stg-users-pending' : ''}">
         <td>${_esc(u.name)}${isSelf ? ' <span class="stg-users-you">You</span>' : ''}${isPending ? ' <span class="stg-users-you" style="background:rgba(217,119,6,.15);color:#d97706">Invited</span>' : ''}</td>
-        <td>${roleCell}</td>
+        <td>${roleBadge}</td>
         <td>${_permGrid(u.role || 'Viewer')}</td>
         <td class="stg-users-last">${lastCell}</td>
-        <td>${actionCell}</td>
+        <td class="stg-users-action-cell">${actionHtml}</td>
       </tr>`;
     }).join('') : `<tr><td colspan="5" class="stg-users-empty">No users recorded yet</td></tr>`;
 
@@ -628,7 +630,6 @@ const Settings = (() => {
           <button class="stg-btn stg-btn-test" id="stgUsersRefreshBtn">&#8635; Refresh</button>
           <button class="stg-btn stg-btn-save" id="stgUsersChangeBtn" onclick="UserManager.showChangeIdentityModal()">&#9997; Change My Name/Role</button>
           ${isAdmin ? '<button class="stg-btn stg-btn-import" id="stgAddUserBtn">&#43; Add User</button>' : ''}
-          ${isAdmin && users.filter(u => !u._invited).length ? '<button class="stg-btn stg-btn-export" id="stgUsersSaveRolesBtn">Save Role Changes</button>' : ''}
         </div>
 
         <div class="stg-invite-form" id="stgInviteForm" style="display:none">
@@ -665,12 +666,6 @@ const Settings = (() => {
   function _bindUsersCardEvents() {
     document.getElementById('stgUsersRefreshBtn')?.addEventListener('click', _refreshUsersCard);
 
-    document.getElementById('stgUsersSaveRolesBtn')?.addEventListener('click', async () => {
-      const selects = document.querySelectorAll('.stg-users-role-sel[data-name]');
-      for (const sel of selects) await UserManager.updateUserRole(sel.dataset.name, sel.value);
-      showToast('Role changes saved', 'success');
-    });
-
     // Add user / invite flow
     document.getElementById('stgAddUserBtn')?.addEventListener('click', () => {
       const form = document.getElementById('stgInviteForm');
@@ -698,6 +693,149 @@ const Settings = (() => {
         showToast(`Invite for ${btn.dataset.name} revoked`, 'success');
         _refreshUsersCard();
       });
+    });
+
+    // Delete user buttons
+    document.querySelectorAll('.stg-users-delete').forEach(btn => {
+      btn.addEventListener('click', () => _showDeleteUserDialog(btn.dataset.name));
+    });
+
+    // Edit permissions buttons
+    document.querySelectorAll('.stg-btn-perms').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const name  = btn.dataset.name;
+        const users = typeof UserManager !== 'undefined' ? await UserManager.getAllUsers() : [];
+        const u     = users.find(x => x.name === name) || { name, role: 'Viewer' };
+        _showPermissionsModal(u.name, u.role, u.permissions || null);
+      });
+    });
+  }
+
+  // ── Delete user confirmation dialog ────────────────────
+  function _showDeleteUserDialog(name) {
+    document.getElementById('stgDeleteUserOverlay')?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'stgDeleteUserOverlay';
+    overlay.className = 'stg-reset-overlay';
+    overlay.innerHTML = `
+      <div class="stg-reset-dialog">
+        <div class="stg-reset-title">Remove User</div>
+        <div class="stg-reset-msg">
+          Remove <strong>${_esc(name)}</strong> from the system?<br><br>
+          They will be asked to register again on next visit.
+        </div>
+        <div class="stg-reset-actions">
+          <button class="stg-btn" id="stgDelUserCancel">Cancel</button>
+          <button class="stg-btn stg-btn-reset-confirm" id="stgDelUserConfirm">Remove User</button>
+        </div>
+      </div>`;
+
+    document.body.appendChild(overlay);
+    overlay.querySelector('#stgDelUserCancel').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    overlay.querySelector('#stgDelUserConfirm').addEventListener('click', async () => {
+      await UserManager.deleteUser(name);
+      overlay.remove();
+      showToast(`${name} removed from the system`, 'success');
+      _refreshUsersCard();
+    });
+  }
+
+  // ── Permissions editor modal ────────────────────────────
+  function _showPermissionsModal(userName, userRole, currentPerms) {
+    document.getElementById('stgPermsModal')?.remove();
+
+    const TAB_DEFS = [
+      { key: 'dashboard', label: 'Dashboard',        adminOnly: false },
+      { key: 'tasks',     label: 'Tasks',             adminOnly: false },
+      { key: 'invoicing', label: 'Invoicing',         adminOnly: false },
+      { key: 'readiness', label: 'Invoice Readiness', adminOnly: false },
+      { key: 'settings',  label: 'Settings',          adminOnly: true  },
+    ];
+    const FIELD_DEFS = [
+      { key: 'taskInfo',   label: 'Task Info',         hint: 'Status, Comments, Task Date',                    adminOnly: false },
+      { key: 'financial',  label: 'Financial Fields',  hint: 'Prices, Amounts, PO Status',                    adminOnly: false },
+      { key: 'acceptance', label: 'Acceptance Fields', hint: 'Acceptance Status, FAC Date, Certificate',      adminOnly: false },
+      { key: 'invoicing',  label: 'Invoicing Fields',  hint: 'TSR, PO Number, VF Invoice, Receiving amounts', adminOnly: false },
+      { key: 'allFields',  label: 'All Fields',        hint: 'Full edit access — overrides all above',        adminOnly: true  },
+    ];
+
+    const isAdmin  = userRole === 'Admin';
+    const isEditor = userRole === 'Editor';
+
+    // Merge saved permissions over role defaults
+    const defTabs   = { dashboard: true, tasks: true, invoicing: true, readiness: true, settings: isAdmin };
+    const defFields = { taskInfo: isAdmin||isEditor, financial: isAdmin, acceptance: isAdmin||isEditor, invoicing: isAdmin||isEditor, allFields: isAdmin };
+    const tabs   = { ...defTabs,   ...(currentPerms?.tabs   || {}) };
+    const fields = { ...defFields, ...(currentPerms?.fields || {}) };
+
+    const tabChecks = TAB_DEFS.map(t => {
+      const locked  = t.adminOnly;
+      const checked = locked ? isAdmin : (tabs[t.key] !== false);
+      const tag     = locked ? ' <span class="perms-admin-only">Admin only</span>' : '';
+      return `<label class="perms-check-row${locked ? ' perms-disabled' : ''}">
+        <input type="checkbox" name="tab_${t.key}" ${checked ? 'checked' : ''} ${locked ? 'disabled' : ''}>
+        <span class="perms-check-label">${_esc(t.label)}${tag}</span>
+      </label>`;
+    }).join('');
+
+    const fieldChecks = FIELD_DEFS.map(f => {
+      const locked  = f.adminOnly;
+      const checked = locked ? isAdmin : (fields[f.key] === true);
+      const tag     = locked ? ' <span class="perms-admin-only">Admin only</span>' : '';
+      return `<label class="perms-check-row${locked ? ' perms-disabled' : ''}">
+        <input type="checkbox" name="field_${f.key}" ${checked ? 'checked' : ''} ${locked ? 'disabled' : ''}>
+        <div class="perms-check-info">
+          <span class="perms-check-label">${_esc(f.label)}${tag}</span>
+          <span class="perms-check-hint">${_esc(f.hint)}</span>
+        </div>
+      </label>`;
+    }).join('');
+
+    const modal = document.createElement('div');
+    modal.id = 'stgPermsModal';
+    modal.className = 'stg-reset-overlay';
+    modal.innerHTML = `
+      <div class="stg-reset-dialog stg-perms-dialog">
+        <div class="stg-reset-title">Edit Permissions &mdash; ${_esc(userName)}</div>
+        <div class="stg-perms-role-row">
+          Role: <span class="stg-role-badge stg-role-${(userRole||'').toLowerCase()}">${_esc(userRole||'')}</span>
+        </div>
+        <div class="stg-perms-section">
+          <div class="stg-perms-section-title">Tab Access</div>
+          ${tabChecks}
+        </div>
+        <div class="stg-perms-section">
+          <div class="stg-perms-section-title">Field Editing</div>
+          ${fieldChecks}
+        </div>
+        <div class="stg-reset-actions">
+          <button class="stg-btn" id="stgPermsCancel">Cancel</button>
+          <button class="stg-btn stg-btn-save" id="stgPermsSave">Save Permissions</button>
+        </div>
+      </div>`;
+
+    document.body.appendChild(modal);
+    modal.querySelector('#stgPermsCancel').addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
+    modal.querySelector('#stgPermsSave').addEventListener('click', async () => {
+      const newPerms = { tabs: {}, fields: {} };
+      TAB_DEFS.forEach(t => {
+        newPerms.tabs[t.key] = t.adminOnly
+          ? isAdmin
+          : !!(modal.querySelector(`[name="tab_${t.key}"]`)?.checked);
+      });
+      FIELD_DEFS.forEach(f => {
+        newPerms.fields[f.key] = f.adminOnly
+          ? isAdmin
+          : !!(modal.querySelector(`[name="field_${f.key}"]`)?.checked);
+      });
+      await UserManager.saveUserPermissions(userName, newPerms);
+      modal.remove();
+      showToast(`Permissions saved for ${userName}`, 'success');
+      _refreshUsersCard();
     });
   }
 
