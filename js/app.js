@@ -316,10 +316,16 @@ function _waitForGis(ms) {
   });
 }
 
-// Read gdsync config from localStorage
+// Read gdsync config from localStorage, falling back to DEFAULT_CONFIG for new users
 function _gdCfg(key) {
-  try { return JSON.parse(localStorage.getItem('TTIS_CONFIG') || '{}').gdsync?.[key] || ''; }
-  catch(e) { return ''; }
+  try {
+    const saved = JSON.parse(localStorage.getItem('TTIS_CONFIG') || '{}').gdsync?.[key] || '';
+    if (saved) return saved;
+    // Fall back to hardcoded defaults so new users connect automatically
+    if (key === 'clientId') return (typeof DEFAULT_CONFIG !== 'undefined' ? DEFAULT_CONFIG.oauthClientId : '') || '';
+    if (key === 'folderId') return (typeof DEFAULT_CONFIG !== 'undefined' ? DEFAULT_CONFIG.driveFolderId : '') || '';
+    return '';
+  } catch(e) { return ''; }
 }
 
 // ── Toast ──────────────────────────────────────────────────
