@@ -130,6 +130,9 @@ function _launchApp(meta) {
     SyncManager.init();
     UserManager.applyAccess();
     showToast(`Loaded ${_rows.length.toLocaleString()} rows from "${meta.fileName}"`, 'success');
+    // Write presence immediately so new users appear in the Users table
+    // right away instead of waiting up to 5 minutes for the next heartbeat.
+    UserManager.writePresence();
   }, 200);
 }
 

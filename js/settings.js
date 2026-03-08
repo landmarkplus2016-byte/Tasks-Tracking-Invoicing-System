@@ -599,20 +599,23 @@ const Settings = (() => {
     const me      = typeof UserManager !== 'undefined' ? UserManager.getUser() : null;
 
     const rows = users.length ? users.map(u => {
-      const isSelf    = me && u.name === me.name;
+      const me2       = typeof UserManager !== 'undefined' ? UserManager.getUser() : null;
+      const isSelf    = me2 && ((u.id && me2.id && u.id === me2.id) || (!u.id && u.name === me2.name));
       const isPending = !!u._invited;
       const lastCell  = isPending
         ? '<span class="stg-invite-tag">Pending Invite</span>'
         : (u.lastActive ? new Date(u.lastActive).toLocaleString() : '—');
       const roleBadge = `<span class="stg-role-badge stg-role-${(u.role||'').toLowerCase()}">${_esc(u.role||'')}</span>`;
+      // Use id as primary key where available; name as fallback for legacy entries
+      const uid = u.id || '';
 
       let actionHtml = '';
       if (isPending) {
         actionHtml = `<button class="stg-btn stg-invite-revoke" data-name="${_esc(u.name)}">Revoke</button>`;
       } else if (isAdmin) {
         actionHtml = `
-          <button class="stg-btn stg-btn-perms" data-name="${_esc(u.name)}">Edit Permissions</button>
-          ${!isSelf ? `<button class="stg-users-delete" data-name="${_esc(u.name)}" title="Remove ${_esc(u.name)} from the system">\u2715</button>` : ''}`;
+          <button class="stg-btn stg-btn-perms" data-id="${_esc(uid)}" data-name="${_esc(u.name)}">Edit Permissions</button>
+          ${!isSelf ? `<button class="stg-users-delete" data-id="${_esc(uid)}" data-name="${_esc(u.name)}" title="Remove ${_esc(u.name)} from the system">\u2715</button>` : ''}`;
       }
 
       return `<tr class="${isSelf ? 'stg-users-self' : ''}${isPending ? ' stg-users-pending' : ''}">
@@ -649,7 +652,7 @@ const Settings = (() => {
         </div>
 
         <table class="stg-users-tbl">
-          <thead><tr><th>Name</th><th>Role</th><th>Permissions</th><th>Last Active</th><th></th></tr></thead>
+          <thead><tr><th>Name</th><th>Role</th><th>Permissions</th><th>Last Seen</th><th></th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>`;
@@ -697,22 +700,23 @@ const Settings = (() => {
 
     // Delete user buttons
     document.querySelectorAll('.stg-users-delete').forEach(btn => {
-      btn.addEventListener('click', () => _showDeleteUserDialog(btn.dataset.name));
+      btn.addEventListener('click', () => _showDeleteUserDialog(btn.dataset.id || btn.dataset.name, btn.dataset.name));
     });
 
     // Edit permissions buttons
     document.querySelectorAll('.stg-btn-perms').forEach(btn => {
       btn.addEventListener('click', async () => {
-        const name  = btn.dataset.name;
-        const users = typeof UserManager !== 'undefined' ? await UserManager.getAllUsers() : [];
-        const u     = users.find(x => x.name === name) || { name, role: 'Viewer' };
-        _showPermissionsModal(u.name, u.role, u.permissions || null);
+        const idOrName = btn.dataset.id || btn.dataset.name;
+        const users    = typeof UserManager !== 'undefined' ? await UserManager.getAllUsers() : [];
+        const u        = users.find(x => (x.id && x.id === btn.dataset.id) || x.name === btn.dataset.name) || { name: btn.dataset.name, role: 'Viewer' };
+        _showPermissionsModal(idOrName, u.name, u.role, u.permissions || null);
       });
     });
   }
 
   // ── Delete user confirmation dialog ────────────────────
-  function _showDeleteUserDialog(name) {
+  // idOrName: user.id (preferred) or user.name; displayName: always the human-readable name
+  function _showDeleteUserDialog(idOrName, displayName) {
     document.getElementById('stgDeleteUserOverlay')?.remove();
 
     const overlay = document.createElement('div');
@@ -722,7 +726,7 @@ const Settings = (() => {
       <div class="stg-reset-dialog">
         <div class="stg-reset-title">Remove User</div>
         <div class="stg-reset-msg">
-          Remove <strong>${_esc(name)}</strong> from the system?<br><br>
+          Remove <strong>${_esc(displayName)}</strong> from the system?<br><br>
           They will be asked to register again on next visit.
         </div>
         <div class="stg-reset-actions">
@@ -735,15 +739,17 @@ const Settings = (() => {
     overlay.querySelector('#stgDelUserCancel').addEventListener('click', () => overlay.remove());
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
     overlay.querySelector('#stgDelUserConfirm').addEventListener('click', async () => {
-      await UserManager.deleteUser(name);
+      await UserManager.deleteUser(idOrName);
       overlay.remove();
-      showToast(`${name} removed from the system`, 'success');
+      showToast(`${displayName} removed from the system`, 'success');
       _refreshUsersCard();
     });
   }
 
   // ── Permissions editor modal ────────────────────────────
-  function _showPermissionsModal(userName, userRole, currentPerms) {
+  // idOrName: user.id (preferred) or user.name — passed to saveUserPermissions
+  // userName: human-readable display name
+  function _showPermissionsModal(idOrName, userName, userRole, currentPerms) {
     document.getElementById('stgPermsModal')?.remove();
 
     const TAB_DEFS = [
@@ -832,7 +838,7 @@ const Settings = (() => {
           ? isAdmin
           : !!(modal.querySelector(`[name="field_${f.key}"]`)?.checked);
       });
-      await UserManager.saveUserPermissions(userName, newPerms);
+      await UserManager.saveUserPermissions(idOrName, newPerms);
       modal.remove();
       showToast(`Permissions saved for ${userName}`, 'success');
       _refreshUsersCard();

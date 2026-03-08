@@ -10,7 +10,7 @@ const UserManager = (() => {
   const USER_KEY        = 'TTIS_USER';
   const ALL_USERS_KEY   = 'TTIS_ALL_USERS';
   const HEARTBEAT_MS    = 5 * 60 * 1000;   // 5 minutes
-  const ACTIVE_WINDOW   = 30 * 60 * 1000;  // 30 minutes
+  const ACTIVE_WINDOW   = 30 * 60 * 1000;  // 30 minutes (avatar row only)
   const ACTIVE_FILE     = 'active_users.json';
 
   const AVATAR_COLORS = [
@@ -46,12 +46,23 @@ const UserManager = (() => {
   let _lastAct    = 0;
   let _readyCb    = null;   // called when identity is confirmed
 
+  // ── Unique ID generator ────────────────────────────────
+  function _generateId() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  }
+
   // ── Init ───────────────────────────────────────────────
   function init(onReady) {
     _readyCb = typeof onReady === 'function' ? onReady : null;
 
     try { const s = localStorage.getItem(USER_KEY);      if (s) _user     = JSON.parse(s); } catch(e) {}
     try { const s = localStorage.getItem(ALL_USERS_KEY); if (s) _allUsers = JSON.parse(s); } catch(e) {}
+
+    // Back-fill id for users who registered before this field existed
+    if (_user && !_user.id) {
+      _user.id = _generateId();
+      localStorage.setItem(USER_KEY, JSON.stringify(_user));
+    }
 
     if (!_user || !_user.name || !_user.role) {
       _showWelcomeModal();
@@ -168,7 +179,10 @@ const UserManager = (() => {
   }
 
   function _setUser(name, role) {
+    // Preserve existing id so the same person doesn't get a new id on identity change
+    const id = _user?.id || _generateId();
     _user = {
+      id,
       name,
       role,
       initials:   _initials(name),
@@ -239,34 +253,57 @@ const UserManager = (() => {
     if (!folderId) return;
 
     try {
+      // Load the full historical list (never truncate — we keep all entries permanently)
       let active = [];
       try {
         const raw = await GoogleDriveStorage.load(folderId, ACTIVE_FILE);
-        active = JSON.parse(raw);
-        if (!Array.isArray(active)) active = [];
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) active = parsed;
+        }
       } catch(e) { /* file may not exist yet */ }
 
-      // Upsert self
-      const entry = { name: _user.name, initials: _user.initials, role: _user.role, lastActive: _user.lastActive };
-      const idx   = active.findIndex(u => u.name === _user.name);
-      if (idx >= 0) active[idx] = entry; else active.push(entry);
+      // Upsert self — match by id (primary key) with name fallback for legacy entries
+      const entry = {
+        id:         _user.id,
+        name:       _user.name,
+        initials:   _user.initials,
+        role:       _user.role,
+        lastActive: _user.lastActive
+      };
+      const idx = _user.id
+        ? active.findIndex(u => u.id === _user.id)
+        : active.findIndex(u => !u.id && u.name === _user.name);
+
+      if (idx >= 0) active[idx] = { ...active[idx], ...entry };
+      else          active.push(entry);
 
       await GoogleDriveStorage.save(folderId, ACTIVE_FILE, JSON.stringify(active));
 
-      // Render all active in the last 30 min
+      // Avatar row: show only users active in the last 30 min
       const cutoff = Date.now() - ACTIVE_WINDOW;
       _renderAvatarRow(active.filter(u => new Date(u.lastActive).getTime() > cutoff));
 
-      // Merge into local all-users cache
+      // Merge full list into local all-users cache
       active.forEach(u => _upsertAllUsers(u));
     } catch(e) {
       console.warn('[TTIS] Heartbeat error:', e);
     }
   }
 
+  // ── writePresence — immediate Drive write (call from _launchApp) ──
+  // Ensures new users appear in the users list right away instead of
+  // waiting up to 5 minutes for the next heartbeat interval.
+  async function writePresence() {
+    await _sendHeartbeat();
+  }
+
   function _getFolderId() {
-    try { return JSON.parse(localStorage.getItem('TTIS_CONFIG') || '{}').gdsync?.folderId || ''; }
-    catch(e) { return ''; }
+    try {
+      const saved = JSON.parse(localStorage.getItem('TTIS_CONFIG') || '{}').gdsync?.folderId || '';
+      if (saved) return saved;
+      return (typeof DEFAULT_CONFIG !== 'undefined' ? DEFAULT_CONFIG.driveFolderId : '') || '';
+    } catch(e) { return ''; }
   }
 
   // ── Avatar row ─────────────────────────────────────────
@@ -275,13 +312,13 @@ const UserManager = (() => {
     if (!el || !users.length) return;
 
     const sorted = [...users].sort((a, b) => {
-      if (a.name === _user?.name) return -1;
-      if (b.name === _user?.name) return 1;
+      if (_isSelf(a)) return -1;
+      if (_isSelf(b)) return 1;
       return new Date(b.lastActive) - new Date(a.lastActive);
     });
 
     el.innerHTML = sorted.slice(0, 6).map(u => {
-      const isSelf = u.name === _user?.name;
+      const isSelf = _isSelf(u);
       const role   = u.role || '';
       const tip    = `${u.name} · ${role}${isSelf ? ' (You)' : ''}`;
       const color  = _colorFor(u.initials || u.name?.slice(0,2) || '?');
@@ -292,6 +329,13 @@ const UserManager = (() => {
     if (sorted.length > 6) {
       el.innerHTML += `<div class="user-avatar user-avatar-more" title="${sorted.length - 6} more active">+${sorted.length - 6}</div>`;
     }
+  }
+
+  // Returns true if entry u belongs to the current local user
+  function _isSelf(u) {
+    if (!_user) return false;
+    if (u.id && _user.id) return u.id === _user.id;
+    return u.name === _user.name;
   }
 
   // ── Invite system ─────────────────────────────────────
@@ -311,7 +355,7 @@ const UserManager = (() => {
     // Don't overwrite an existing active user — just update their role
     const existing = _allUsers.find(u => u.name.toLowerCase().trim() === name.toLowerCase().trim() && !u._invited);
     if (existing) {
-      await updateUserRole(existing.name, role);
+      await updateUserRole(existing.id || existing.name, role);
       return existing;
     }
     const entry = { name, role, initials: _initials(name), _invited: true, lastActive: null };
@@ -340,8 +384,11 @@ const UserManager = (() => {
   }
 
   // ── Delete user ────────────────────────────────────────
-  async function deleteUser(name) {
-    const idx = _allUsers.findIndex(u => u.name === name);
+  // idOrName: pass user.id (preferred) or user.name (fallback)
+  async function deleteUser(idOrName) {
+    const idx = _allUsers.findIndex(u =>
+      (u.id && u.id === idOrName) || u.name === idOrName
+    );
     if (idx < 0) return;
     _allUsers.splice(idx, 1);
     localStorage.setItem(ALL_USERS_KEY, JSON.stringify(_allUsers));
@@ -354,14 +401,17 @@ const UserManager = (() => {
   }
 
   // ── Save user permissions ──────────────────────────────
-  async function saveUserPermissions(name, permissions) {
-    const idx = _allUsers.findIndex(u => u.name === name);
+  // idOrName: pass user.id (preferred) or user.name (fallback)
+  async function saveUserPermissions(idOrName, permissions) {
+    const idx = _allUsers.findIndex(u =>
+      (u.id && u.id === idOrName) || u.name === idOrName
+    );
     if (idx < 0) return;
     _allUsers[idx].permissions = permissions;
     localStorage.setItem(ALL_USERS_KEY, JSON.stringify(_allUsers));
 
     // If editing self, update live user object and re-apply access
-    if (_user && _user.name === name) {
+    if (_user && _isSelf(_allUsers[idx])) {
       _user.permissions = permissions;
       localStorage.setItem(USER_KEY, JSON.stringify(_user));
       applyAccess();
@@ -377,7 +427,11 @@ const UserManager = (() => {
 
   // ── All-users cache ────────────────────────────────────
   function _upsertAllUsers(u) {
-    const idx = _allUsers.findIndex(x => x.name === u.name);
+    let idx = -1;
+    // Primary key: id (when both stored entry and incoming entry have one)
+    if (u.id) idx = _allUsers.findIndex(x => x.id === u.id);
+    // Fallback: name-only match for legacy entries that pre-date the id field
+    if (idx < 0) idx = _allUsers.findIndex(x => !x.id && x.name === u.name);
     if (idx >= 0) _allUsers[idx] = { ..._allUsers[idx], ...u };
     else          _allUsers.push({ ...u });
     try { localStorage.setItem(ALL_USERS_KEY, JSON.stringify(_allUsers)); } catch(e) {}
@@ -389,21 +443,25 @@ const UserManager = (() => {
       if (folderId) {
         try {
           const raw  = await GoogleDriveStorage.load(folderId, ACTIVE_FILE);
-          const list = JSON.parse(raw);
-          if (Array.isArray(list)) list.forEach(u => _upsertAllUsers(u));
+          if (raw) {
+            const list = JSON.parse(raw);
+            if (Array.isArray(list)) list.forEach(u => _upsertAllUsers(u));
+          }
         } catch(e) {}
       }
     }
     return _allUsers;
   }
 
-  async function updateUserRole(name, newRole) {
-    const idx = _allUsers.findIndex(u => u.name === name);
+  async function updateUserRole(idOrName, newRole) {
+    const idx = _allUsers.findIndex(u =>
+      (u.id && u.id === idOrName) || u.name === idOrName
+    );
     if (idx < 0) return;
     _allUsers[idx].role = newRole;
     localStorage.setItem(ALL_USERS_KEY, JSON.stringify(_allUsers));
 
-    if (_user && _user.name === name) {
+    if (_user && _isSelf(_allUsers[idx])) {
       _user.role = newRole;
       localStorage.setItem(USER_KEY, JSON.stringify(_user));
       applyAccess();
@@ -458,6 +516,7 @@ const UserManager = (() => {
     createInvite, revokeInvite,
     deleteUser, saveUserPermissions,
     stampCreated, stampUpdated,
+    writePresence,
     renderAvatarRow: _renderAvatarRow
   };
 
