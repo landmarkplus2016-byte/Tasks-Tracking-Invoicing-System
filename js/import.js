@@ -32,7 +32,32 @@ const ImportManager = (() => {
   function getExcludedCount() { return _excludedIds.size; }
 
   // Open file picker → triggers the import flow
-  function open() {
+  async function open() {
+    // Check if another user is running an import
+    if (typeof LockManager !== 'undefined') {
+      if (LockManager.isImportLocked()) {
+        const il  = LockManager.getImportLock();
+        const who = il?.lockedByName || 'Unknown';
+        const at  = il?.lockedAt ? new Date(il.lockedAt).toLocaleString() : '';
+        const isAdmin = typeof UserManager !== 'undefined' && UserManager.isAdmin();
+        _showImportBlockedModal(who, at, isAdmin);
+        return;
+      }
+    }
+
+    // Warn if other users are currently online (may cause data conflicts)
+    if (typeof GoogleDriveStorage !== 'undefined' && GoogleDriveStorage.isAuthorized()) {
+      const activeUsers = _getActiveUsers();
+      if (activeUsers.length > 0) {
+        const names = activeUsers.map(u => u.name || 'Unknown').join(', ');
+        const proceed = confirm(
+          `Warning: ${activeUsers.length} other user${activeUsers.length > 1 ? 's are' : ' is'} currently online:\n${names}\n\n` +
+          `Importing will overwrite their view. They will need to refresh to see the latest data.\n\nProceed with import?`
+        );
+        if (!proceed) return;
+      }
+    }
+
     let inp = document.getElementById('impFileInput');
     if (!inp) {
       inp = Object.assign(document.createElement('input'), {
@@ -44,6 +69,55 @@ const ImportManager = (() => {
     }
     inp.value = '';
     inp.click();
+  }
+
+  // Show modal when import is blocked by another user's lock
+  function _showImportBlockedModal(lockedBy, lockedAt, isAdmin) {
+    document.getElementById('impBlockedOverlay')?.remove();
+    const div = document.createElement('div');
+    div.id        = 'impBlockedOverlay';
+    div.className = 'imp-overlay';
+    div.innerHTML = `
+      <div class="imp-modal" style="max-width:480px">
+        <div class="imp-modal-head">
+          <div>
+            <div class="imp-modal-title">&#9889; Import In Progress</div>
+            <div class="imp-modal-file">Another user is currently importing</div>
+          </div>
+          <button class="imp-close" onclick="document.getElementById('impBlockedOverlay')?.remove()">&#10005;</button>
+        </div>
+        <div style="padding:20px 24px">
+          <p style="margin:0 0 12px"><strong>${_esc(lockedBy)}</strong> started an import${lockedAt ? ' at ' + _esc(lockedAt) : ''}.
+             Please wait for them to finish before importing.</p>
+          <p style="margin:0;color:var(--text2);font-size:12px">The import lock expires automatically after 5 minutes of inactivity.</p>
+        </div>
+        <div class="imp-footer">
+          <button class="imp-btn imp-btn-cancel" onclick="document.getElementById('impBlockedOverlay')?.remove()">Close</button>
+          ${isAdmin ? `<button class="imp-btn imp-btn-confirm" onclick="LockManager.breakLock(LockManager.IMPORT_KEY).then(()=>{document.getElementById('impBlockedOverlay')?.remove();showToast('Import lock broken','success')})">&#128275; Break Lock (Admin)</button>` : ''}
+        </div>
+      </div>`;
+    document.body.appendChild(div);
+  }
+
+  // Get currently active users (last 30 min) excluding self
+  function _getActiveUsers() {
+    if (typeof UserManager === 'undefined') return [];
+    try {
+      const me   = JSON.parse(localStorage.getItem('TTIS_USER') || '{}');
+      const myId = me.id || me.name || '';
+      const WINDOW = 30 * 60 * 1000;
+      const cutoff = Date.now() - WINDOW;
+      // Access the cached users list from UserManager if available
+      const all = typeof UserManager._getAllUsersCache === 'function'
+        ? UserManager._getAllUsersCache()
+        : [];
+      return all.filter(u => {
+        if (!u.lastActive) return false;
+        if (new Date(u.lastActive).getTime() < cutoff) return false;
+        const uid = u.id || u.name || '';
+        return uid !== myId;
+      });
+    } catch { return []; }
   }
 
   // Load exclusion list from an Excel file (column headed 'ID#' or 'ID')
@@ -85,17 +159,43 @@ const ImportManager = (() => {
     if (!file) return;
     input.value = '';
 
+    // Acquire import lock before proceeding
+    if (typeof LockManager !== 'undefined') {
+      try {
+        const result = await LockManager.acquireLock(LockManager.IMPORT_KEY);
+        if (!result.acquired) {
+          const who = result.lock?.lockedByName || 'Unknown';
+          showToast(`Import blocked — ${who} is already importing`, 'error');
+          return;
+        }
+      } catch(e) {
+        showToast('Could not acquire import lock: ' + e.message, 'warn');
+        // Continue without lock if Drive is unavailable
+      }
+    }
+
     showToast('Parsing import file…', 'info');
     try {
       const importedRows = await _parseCollective(file);
-      if (!importedRows.length) { showToast('No data rows found in Collective sheet', 'error'); return; }
+      if (!importedRows.length) {
+        await _releaseImportLock();
+        showToast('No data rows found in Collective sheet', 'error');
+        return;
+      }
 
       const result = _buildDiff(importedRows, file.name);
       _pending = result;
       _detailTab = 'new';
       _renderModal(result);
     } catch (err) {
+      await _releaseImportLock();
       showToast('Import error: ' + err.message, 'error');
+    }
+  }
+
+  async function _releaseImportLock() {
+    if (typeof LockManager !== 'undefined') {
+      try { await LockManager.releaseLock(LockManager.IMPORT_KEY); } catch(e) { /* ignore */ }
     }
   }
 
@@ -528,14 +628,51 @@ const ImportManager = (() => {
     const badge = document.getElementById('dataBadge');
     if (badge) badge.textContent = `${merged.length.toLocaleString()} rows · (imported)`;
 
+    // Save merged rows to Drive
+    _saveImportToDrive(merged);
+
     _pending = null;
     if (typeof SyncManager !== 'undefined') SyncManager.markSynced();
     _cancel();
     showToast(toastMsg, 'success');
   }
 
+  async function _saveImportToDrive(rows) {
+    if (typeof GoogleDriveStorage === 'undefined' || !GoogleDriveStorage.isAuthorized()) {
+      await _releaseImportLock();
+      return;
+    }
+    const folderId = _getDriveFolderId();
+    if (!folderId) { await _releaseImportLock(); return; }
+    try {
+      const payload = JSON.stringify({
+        savedAt:  new Date().toISOString(),
+        rowCount: rows.length,
+        rows:     rows
+      });
+      await GoogleDriveStorage.save(folderId, 'tasks.json', payload);
+      showToast('Data saved to Google Drive', 'success');
+    } catch(e) {
+      showToast('Drive save failed: ' + e.message, 'error');
+    }
+    await _releaseImportLock();
+  }
+
+  function _getDriveFolderId() {
+    try {
+      const s = JSON.parse(localStorage.getItem('TTIS_CONFIG') || '{}').gdsync?.folderId || '';
+      if (s) return s;
+      return (typeof DEFAULT_CONFIG !== 'undefined' ? DEFAULT_CONFIG.driveFolderId : '') || '';
+    } catch { return ''; }
+  }
+
   function _cancel() {
     document.getElementById('impOverlay')?.remove();
+    // Release import lock if user cancelled without confirming
+    if (_pending) {
+      _pending = null;
+      _releaseImportLock();
+    }
   }
 
   // ── Exclusion list persistence ─────────────────────────

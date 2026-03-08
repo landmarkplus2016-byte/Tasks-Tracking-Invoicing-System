@@ -9,8 +9,9 @@ const UserManager = (() => {
 
   const USER_KEY        = 'TTIS_USER';
   const ALL_USERS_KEY   = 'TTIS_ALL_USERS';
-  const HEARTBEAT_MS    = 5 * 60 * 1000;   // 5 minutes
-  const ACTIVE_WINDOW   = 30 * 60 * 1000;  // 30 minutes (avatar row only)
+  const HEARTBEAT_MS    = 5 * 60 * 1000;   // write own entry every 5 minutes
+  const REFRESH_MS      = 2 * 60 * 1000;   // read others' entries every 2 minutes
+  const ACTIVE_WINDOW   = 30 * 60 * 1000;  // 30 minutes active window for avatar row
   const ACTIVE_FILE     = 'active_users.json';
 
   const AVATAR_COLORS = [
@@ -222,8 +223,9 @@ const UserManager = (() => {
 
   // ── Heartbeat + presence ───────────────────────────────
   function _startHeartbeat() {
-    _sendHeartbeat();
-    _hbTimer = setInterval(_sendHeartbeat, HEARTBEAT_MS);
+    _sendHeartbeat();                                      // immediate write + read
+    _hbTimer = setInterval(_sendHeartbeat, HEARTBEAT_MS); // write own entry every 5 min
+    setInterval(_refreshPresence, REFRESH_MS);            // read-only poll every 2 min
     document.addEventListener('click',   _onActivity, { passive: true });
     document.addEventListener('keydown', _onActivity, { passive: true });
   }
@@ -288,6 +290,28 @@ const UserManager = (() => {
       active.forEach(u => _upsertAllUsers(u));
     } catch(e) {
       console.warn('[TTIS] Heartbeat error:', e);
+    }
+  }
+
+  // ── Read-only presence refresh (every 2 min) ──────────
+  // Reads active_users.json and updates the avatar row WITHOUT writing.
+  // This is what keeps the header current for all users who are online.
+  async function _refreshPresence() {
+    if (typeof GoogleDriveStorage === 'undefined' || !GoogleDriveStorage.isAuthorized()) return;
+    const folderId = _getFolderId();
+    if (!folderId) return;
+    try {
+      const raw = await GoogleDriveStorage.load(folderId, ACTIVE_FILE);
+      if (!raw) return;
+      const active = JSON.parse(raw);
+      if (!Array.isArray(active)) return;
+      // Update avatar row with all users active in the last 30 min
+      const cutoff = Date.now() - ACTIVE_WINDOW;
+      _renderAvatarRow(active.filter(u => new Date(u.lastActive).getTime() > cutoff));
+      // Also sync into the local all-users cache for Settings table
+      active.forEach(u => _upsertAllUsers(u));
+    } catch(e) {
+      console.warn('[TTIS] Presence refresh error:', e.message);
     }
   }
 

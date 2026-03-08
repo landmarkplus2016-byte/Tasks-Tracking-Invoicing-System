@@ -12,6 +12,24 @@ const Tasks = (() => {
   let _sortDir     = 1;
   const PAGE_SZ    = 100;
 
+  // ── Edit state ────────────────────────────────────────
+  let _editState   = null;   // { row, rowId, baseline, edits }
+  let _conflictState = null; // { rowId, baseline, remote, mine }
+
+  // Fields users can edit in the edit modal
+  const EDITABLE_FIELDS = [
+    { key: 'status',            label: 'Status',       type: 'select',
+      options: ['', 'Done', 'In Progress', 'Cancelled', 'Assigned'] },
+    { key: 'task_date',         label: 'Task Date',    type: 'text', placeholder: 'DD/MM/YYYY' },
+    { key: 'acceptance_status', label: 'Acceptance',   type: 'select',
+      options: ['', 'FAC', 'TOC', 'PAC'] },
+    { key: 'fac_date',          label: 'FAC Date',     type: 'text', placeholder: 'DD/MM/YYYY' },
+    { key: 'tsr_sub',           label: 'TSR Sub#',     type: 'text' },
+    { key: 'po_status',         label: 'PO Status',    type: 'text' },
+    { key: 'coordinator',       label: 'Coordinator',  type: 'text' },
+    { key: 'vf_owner',          label: 'VF Owner',     type: 'text' },
+  ];
+
   // ── Public API ───────────────────────────────────────
   function init(rows) {
     _allRows = rows;
@@ -75,6 +93,7 @@ const Tasks = (() => {
                 <th onclick="Tasks.sortBy('coordinator')">Coordinator</th>
                 <th onclick="Tasks.sortBy('vf_owner')">VF Owner</th>
                 <th>Price</th>
+                <th class="col-action"></th>
               </tr>
             </thead>
             <tbody id="taskBody"></tbody>
@@ -178,11 +197,11 @@ const Tasks = (() => {
     if (!tbody) return;
 
     if (slice.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="24" class="empty-state">
+      tbody.innerHTML = `<tr><td colspan="25" class="empty-state">
         <div class="empty-state-text">No matching records</div></td></tr>`;
     } else {
       tbody.innerHTML = slice.map(r => `
-        <tr${_auditTitle(r)}>
+        <tr${_auditTitle(r)}${_rowLockClass(r)}>
           <td>${_esc(r.id || '')}</td>
           <td>${_esc(r.job_code || '')}</td>
           <td>${_esc(r.logical_site_id || '')}</td>
@@ -207,6 +226,7 @@ const Tasks = (() => {
           <td>${_esc(r.coordinator || '')}</td>
           <td>${_esc(r.vf_owner || '')}</td>
           <td>${_priceBadge(r)}</td>
+          <td class="col-action">${_rowAction(r)}</td>
         </tr>`).join('');
     }
 
@@ -216,8 +236,395 @@ const Tasks = (() => {
     _renderPagination('tPageBtns', _page, pages, p => { _page = p; _render(); });
   }
 
+  // ── Lock indicator helpers ────────────────────────────
+  function _rowLockClass(r) {
+    if (!r.id) return '';
+    if (typeof LockManager === 'undefined') return '';
+    if (LockManager.isImportLocked()) return ' class="row-import-locked"';
+    if (LockManager.isLockedByMe(String(r.id))) return ' class="row-locked-mine"';
+    if (LockManager.isLocked(String(r.id)))     return ' class="row-locked-other"';
+    return '';
+  }
+
+  function _rowAction(r) {
+    if (!r.id) return '';
+    const id = _esc(String(r.id));
+
+    // Import in progress — no edits allowed
+    if (typeof LockManager !== 'undefined' && LockManager.isImportLocked()) {
+      const il = LockManager.getImportLock();
+      const who = il?.lockedByName || 'someone';
+      return `<span class="lock-icon lock-import" title="Import in progress by ${_esc(who)}">&#9889;</span>`;
+    }
+
+    // Locked by me
+    if (typeof LockManager !== 'undefined' && LockManager.isLockedByMe(String(r.id))) {
+      return `<span class="lock-icon lock-mine" title="You are editing this row">&#9998;</span>`;
+    }
+
+    // Locked by someone else
+    if (typeof LockManager !== 'undefined' && LockManager.isLocked(String(r.id))) {
+      const lock = LockManager.getLock(String(r.id));
+      const who  = lock?.lockedByName || 'Unknown';
+      const at   = lock?.lockedAt ? new Date(lock.lockedAt).toLocaleTimeString() : '';
+      const tip  = `Locked by ${who}${at ? ' since ' + at : ''}`;
+      const isAdmin = (typeof UserManager !== 'undefined' && UserManager.isAdmin());
+      return `<span class="lock-icon lock-other" title="${_esc(tip)}">&#128274;</span>` +
+        (isAdmin ? `<button class="row-break-btn" onclick="Tasks.breakLock('${id}')" title="Break lock (Admin)">&#128275;</button>` : '');
+    }
+
+    // Free to edit
+    return `<button class="row-edit-btn" onclick="Tasks.openEdit('${id}')" title="Edit row">&#9998;</button>`;
+  }
+
+  // ── Public: open edit modal ───────────────────────────
+  async function openEdit(rowId) {
+    const row = _allRows.find(r => String(r.id) === String(rowId));
+    if (!row) { showToast('Row not found', 'error'); return; }
+
+    if (typeof LockManager !== 'undefined') {
+      showToast('Acquiring lock…', 'info');
+      try {
+        const result = await LockManager.acquireLock(String(rowId));
+        if (!result.acquired) {
+          const lock = result.lock;
+          const who  = lock?.lockedByName || 'Unknown';
+          const at   = lock?.lockedAt ? new Date(lock.lockedAt).toLocaleString() : '';
+          const isAdmin = typeof UserManager !== 'undefined' && UserManager.isAdmin();
+          _showLockBlockedModal(rowId, who, at, isAdmin);
+          return;
+        }
+      } catch(e) {
+        showToast('Lock error: ' + e.message, 'error');
+        return;
+      }
+    }
+
+    _editState = {
+      rowId:    String(rowId),
+      row:      row,
+      baseline: _snapshotRow(row)
+    };
+    _showEditModal(row);
+    _render();   // refresh lock icons
+  }
+
+  // ── Public: cancel edit ───────────────────────────────
+  async function cancelEdit() {
+    document.getElementById('taskEditOverlay')?.remove();
+    if (_editState && typeof LockManager !== 'undefined') {
+      await LockManager.releaseLock(_editState.rowId);
+    }
+    _editState = null;
+    _render();
+  }
+
+  // ── Public: save edit ─────────────────────────────────
+  async function saveEdit() {
+    if (!_editState) return;
+    const { rowId, row, baseline } = _editState;
+
+    // Collect form values
+    const edits = {};
+    EDITABLE_FIELDS.forEach(f => {
+      const el = document.getElementById('te_' + f.key);
+      if (el) edits[f.key] = el.value.trim() || null;
+    });
+
+    // Disable save button to prevent double-click
+    const saveBtn = document.getElementById('taskEditSaveBtn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+
+    // Conflict check — fetch fresh tasks.json from Drive
+    if (typeof GoogleDriveStorage !== 'undefined' && GoogleDriveStorage.isAuthorized()) {
+      try {
+        const folderId = _getFolderId();
+        if (folderId) {
+          const raw  = await GoogleDriveStorage.load(folderId, 'tasks.json');
+          if (raw) {
+            const data      = JSON.parse(raw);
+            const driveRows = Array.isArray(data) ? data : (data.rows || []);
+            const driveRow  = driveRows.find(r => String(r.id) === rowId);
+            if (driveRow) {
+              const baselineAt = baseline.updated_at || null;
+              const driveAt    = driveRow.updated_at  || null;
+              if (baselineAt && driveAt && baselineAt !== driveAt) {
+                // Someone else saved changes — show conflict modal
+                _conflictState = { rowId, baseline, remote: _snapshotRow(driveRow), mine: edits };
+                document.getElementById('taskEditOverlay')?.remove();
+                _showConflictModal();
+                return;
+              }
+            }
+          }
+        }
+      } catch(e) {
+        console.warn('[TTIS] Conflict check failed:', e.message);
+      }
+    }
+
+    await _applyEdits(rowId, row, edits);
+  }
+
+  // ── Public: admin break lock ──────────────────────────
+  async function breakLock(rowId) {
+    if (typeof LockManager === 'undefined') return;
+    try {
+      await LockManager.breakLock(String(rowId));
+      showToast('Lock broken', 'success');
+      _render();
+    } catch(e) {
+      showToast(e.message, 'error');
+    }
+  }
+
+  // ── Public: resolve conflict ──────────────────────────
+  async function resolveConflict(choice) {
+    if (!_conflictState) return;
+    if (choice === 'cancel') {
+      // User closed conflict modal — release lock and abandon edits
+      const rowId = _conflictState.rowId;
+      _closeConflict();
+      if (typeof LockManager !== 'undefined') await LockManager.releaseLock(rowId);
+      _editState = null;
+      _render();
+      return;
+    }
+    const { rowId, baseline, remote, mine } = _conflictState;
+    const row = _allRows.find(r => String(r.id) === rowId);
+    if (!row) { showToast('Row no longer found', 'error'); _closeConflict(); return; }
+
+    let edits;
+    if (choice === 'mine') {
+      edits = mine;
+    } else if (choice === 'theirs') {
+      edits = remote;
+    } else {
+      // 'merge' — per-field selection via radio buttons
+      edits = {};
+      EDITABLE_FIELDS.forEach(f => {
+        const radio = document.querySelector(`input[name="cf_${f.key}"]:checked`);
+        edits[f.key] = radio ? radio.value : mine[f.key];
+      });
+    }
+
+    _closeConflict();
+    await _applyEdits(rowId, row, edits);
+  }
+
+  function _closeConflict() {
+    document.getElementById('conflictOverlay')?.remove();
+    _conflictState = null;
+  }
+
+  // ── Apply edits to the row and save ──────────────────
+  async function _applyEdits(rowId, row, edits) {
+    // Stamp who updated it
+    if (typeof UserManager !== 'undefined') UserManager.stampUpdated(row);
+
+    // Apply edits
+    EDITABLE_FIELDS.forEach(f => {
+      if (f.key in edits) row[f.key] = edits[f.key] || '';
+    });
+
+    // Save to Drive
+    let saved = false;
+    try {
+      await _saveRowsToDrive();
+      saved = true;
+    } catch(e) {
+      showToast('Save failed: ' + e.message + ' — changes kept locally only', 'error');
+    }
+
+    // Re-init all modules with updated data
+    buildDashboard(_allRows);
+    Invoicing.init(_allRows);
+    Readiness.init(_allRows);
+
+    // Release lock
+    if (typeof LockManager !== 'undefined') {
+      await LockManager.releaseLock(rowId);
+    }
+
+    _editState = null;
+    document.getElementById('taskEditOverlay')?.remove();
+    _render();
+
+    if (saved) showToast('Row saved successfully', 'success');
+    if (typeof SyncManager !== 'undefined') SyncManager.markSynced();
+  }
+
+  // ── Edit modal ────────────────────────────────────────
+  function _showEditModal(row) {
+    document.getElementById('taskEditOverlay')?.remove();
+
+    const fields = EDITABLE_FIELDS.map(f => {
+      const val = row[f.key] != null ? String(row[f.key]) : '';
+      if (f.type === 'select') {
+        const opts = f.options.map(o =>
+          `<option value="${_esc(o)}"${o === val ? ' selected' : ''}>${o || '—'}</option>`
+        ).join('');
+        return `<div class="te-group">
+          <label class="te-label">${_esc(f.label)}</label>
+          <select class="te-input" id="te_${f.key}">${opts}</select>
+        </div>`;
+      }
+      return `<div class="te-group">
+        <label class="te-label">${_esc(f.label)}</label>
+        <input class="te-input" id="te_${f.key}" type="text"
+               value="${_esc(val)}" placeholder="${_esc(f.placeholder || '')}">
+      </div>`;
+    }).join('');
+
+    const div = document.createElement('div');
+    div.id        = 'taskEditOverlay';
+    div.className = 'task-edit-overlay';
+    div.innerHTML = `
+      <div class="task-edit-modal">
+        <div class="task-edit-header">
+          <div>
+            <div class="task-edit-title">Edit Task</div>
+            <div class="task-edit-meta">#${_esc(String(row.id || ''))} · ${_esc(row.logical_site_id || '')} · ${_esc(row.task_name || '')}</div>
+          </div>
+          <button class="task-edit-close" onclick="Tasks.cancelEdit()">&#10005;</button>
+        </div>
+        <div class="task-edit-body">
+          <div class="te-grid">${fields}</div>
+        </div>
+        <div class="task-edit-footer">
+          <button class="te-btn te-btn-cancel" onclick="Tasks.cancelEdit()">Cancel</button>
+          <button class="te-btn te-btn-save" id="taskEditSaveBtn" onclick="Tasks.saveEdit()">Save Changes</button>
+        </div>
+      </div>`;
+    document.body.appendChild(div);
+  }
+
+  // ── Lock blocked modal (when row is locked by another user) ──
+  function _showLockBlockedModal(rowId, lockedBy, lockedAt, isAdmin) {
+    document.getElementById('taskEditOverlay')?.remove();
+
+    const div = document.createElement('div');
+    div.id        = 'taskEditOverlay';
+    div.className = 'task-edit-overlay';
+    div.innerHTML = `
+      <div class="task-edit-modal task-edit-modal-sm">
+        <div class="task-edit-header">
+          <div class="task-edit-title">&#128274; Row Locked</div>
+          <button class="task-edit-close" onclick="document.getElementById('taskEditOverlay')?.remove()">&#10005;</button>
+        </div>
+        <div class="task-edit-body">
+          <div class="lock-blocked-msg">
+            <strong>${_esc(lockedBy)}</strong> is currently editing this row.
+            ${lockedAt ? `<div class="lock-blocked-time">Locked at ${_esc(lockedAt)}</div>` : ''}
+            <div class="lock-blocked-hint">The lock expires automatically after 5 minutes of inactivity.</div>
+          </div>
+        </div>
+        <div class="task-edit-footer">
+          <button class="te-btn te-btn-cancel" onclick="document.getElementById('taskEditOverlay')?.remove()">Close</button>
+          ${isAdmin ? `<button class="te-btn te-btn-break" onclick="Tasks.breakLock('${_esc(rowId)}');document.getElementById('taskEditOverlay')?.remove()">&#128275; Break Lock (Admin)</button>` : ''}
+        </div>
+      </div>`;
+    document.body.appendChild(div);
+  }
+
+  // ── Conflict resolution modal ─────────────────────────
+  function _showConflictModal() {
+    document.getElementById('conflictOverlay')?.remove();
+    const { baseline, remote, mine } = _conflictState;
+
+    // Find fields that differ between baseline→remote and baseline→mine
+    const diffFields = EDITABLE_FIELDS.filter(f =>
+      (baseline[f.key] || '') !== (remote[f.key] || '') ||
+      (baseline[f.key] || '') !== (mine[f.key] || '')
+    );
+
+    const rows = diffFields.map(f => {
+      const bv = baseline[f.key] || '—';
+      const rv = remote[f.key]   || '—';
+      const mv = mine[f.key]     || '—';
+      const remoteChanged = bv !== rv;
+      const mineChanged   = bv !== mv;
+      return `<tr>
+        <td class="cf-field">${_esc(f.label)}</td>
+        <td class="cf-base">${_esc(bv)}</td>
+        <td class="cf-remote${remoteChanged ? ' cf-changed' : ''}">${_esc(rv)}</td>
+        <td class="cf-mine${mineChanged ? ' cf-changed' : ''}">${_esc(mv)}</td>
+        <td class="cf-pick">
+          <label class="cf-radio"><input type="radio" name="cf_${f.key}" value="${_esc(rv)}" ${!mineChanged ? 'checked' : ''}> Theirs</label>
+          <label class="cf-radio"><input type="radio" name="cf_${f.key}" value="${_esc(mv)}" ${mineChanged ? 'checked' : ''}> Mine</label>
+        </td>
+      </tr>`;
+    }).join('');
+
+    const div = document.createElement('div');
+    div.id        = 'conflictOverlay';
+    div.className = 'conflict-overlay';
+    div.innerHTML = `
+      <div class="conflict-modal">
+        <div class="conflict-header">
+          <span>&#9889; Editing Conflict Detected</span>
+          <button class="task-edit-close" onclick="Tasks.resolveConflict('cancel')">&#10005;</button>
+        </div>
+        <div class="conflict-body">
+          <p class="conflict-desc">While you were editing, another user saved changes to this row.
+            Review the differences below and choose which values to keep.</p>
+          <div class="conflict-table-wrap">
+            <table class="conflict-table">
+              <thead>
+                <tr>
+                  <th>Field</th>
+                  <th>Original</th>
+                  <th>Their Changes</th>
+                  <th>Your Changes</th>
+                  <th>Keep</th>
+                </tr>
+              </thead>
+              <tbody>${rows || '<tr><td colspan="5" style="text-align:center;color:var(--text2)">No field differences detected</td></tr>'}</tbody>
+            </table>
+          </div>
+        </div>
+        <div class="conflict-footer">
+          <button class="te-btn te-btn-cancel" onclick="Tasks.resolveConflict('cancel')">Cancel</button>
+          <button class="te-btn te-btn-theirs" onclick="Tasks.resolveConflict('theirs')">Keep Their Version</button>
+          <button class="te-btn te-btn-merge"  onclick="Tasks.resolveConflict('merge')">Apply Selection</button>
+          <button class="te-btn te-btn-save"   onclick="Tasks.resolveConflict('mine')">Keep My Version</button>
+        </div>
+      </div>`;
+    document.body.appendChild(div);
+  }
+
+  // ── Save rows to Drive ────────────────────────────────
+  async function _saveRowsToDrive() {
+    const folderId = _getFolderId();
+    if (!folderId) throw new Error('No Drive folder configured');
+    if (typeof GoogleDriveStorage === 'undefined' || !GoogleDriveStorage.isAuthorized()) {
+      throw new Error('Not connected to Google Drive');
+    }
+    const payload = JSON.stringify({
+      savedAt:  new Date().toISOString(),
+      rowCount: _allRows.length,
+      rows:     _allRows
+    });
+    await GoogleDriveStorage.save(folderId, 'tasks.json', payload);
+  }
+
+  function _getFolderId() {
+    try {
+      const s = JSON.parse(localStorage.getItem('TTIS_CONFIG') || '{}').gdsync?.folderId || '';
+      if (s) return s;
+      return (typeof DEFAULT_CONFIG !== 'undefined' ? DEFAULT_CONFIG.driveFolderId : '') || '';
+    } catch { return ''; }
+  }
+
+  function _snapshotRow(r) {
+    const snap = {};
+    EDITABLE_FIELDS.forEach(f => { snap[f.key] = r[f.key] != null ? String(r[f.key]) : ''; });
+    snap.updated_at = r.updated_at || null;
+    return snap;
+  }
+
   // ── Expose ────────────────────────────────────────────
-  return { init, applyFilters, clearFilters, sortBy };
+  return { init, applyFilters, clearFilters, sortBy, openEdit, cancelEdit, saveEdit, breakLock, resolveConflict };
 })();
 
 // ── Shared helpers ────────────────────────────────────────

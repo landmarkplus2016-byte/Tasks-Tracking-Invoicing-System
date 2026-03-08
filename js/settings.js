@@ -598,10 +598,16 @@ const Settings = (() => {
     const isAdmin = typeof UserManager !== 'undefined' && UserManager.isAdmin();
     const me      = typeof UserManager !== 'undefined' ? UserManager.getUser() : null;
 
+    const ACTIVE_CUTOFF = Date.now() - 30 * 60 * 1000; // 30-minute active window
+
     const rows = users.length ? users.map(u => {
       const me2       = typeof UserManager !== 'undefined' ? UserManager.getUser() : null;
       const isSelf    = me2 && ((u.id && me2.id && u.id === me2.id) || (!u.id && u.name === me2.name));
       const isPending = !!u._invited;
+      const isOnline  = !isPending && u.lastActive && new Date(u.lastActive).getTime() > ACTIVE_CUTOFF;
+      const dot       = isOnline
+        ? '<span class="stg-online-dot" title="Active in last 30 min"></span>'
+        : '<span class="stg-offline-dot" title="Not recently active"></span>';
       const lastCell  = isPending
         ? '<span class="stg-invite-tag">Pending Invite</span>'
         : (u.lastActive ? new Date(u.lastActive).toLocaleString() : '—');
@@ -619,7 +625,7 @@ const Settings = (() => {
       }
 
       return `<tr class="${isSelf ? 'stg-users-self' : ''}${isPending ? ' stg-users-pending' : ''}">
-        <td>${_esc(u.name)}${isSelf ? ' <span class="stg-users-you">You</span>' : ''}${isPending ? ' <span class="stg-users-you" style="background:rgba(217,119,6,.15);color:#d97706">Invited</span>' : ''}</td>
+        <td>${dot}${_esc(u.name)}${isSelf ? ' <span class="stg-users-you">You</span>' : ''}${isPending ? ' <span class="stg-users-you" style="background:rgba(217,119,6,.15);color:#d97706">Invited</span>' : ''}</td>
         <td>${roleBadge}</td>
         <td>${_permGrid(u.role || 'Viewer')}</td>
         <td class="stg-users-last">${lastCell}</td>

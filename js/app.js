@@ -127,7 +127,17 @@ function _launchApp(meta) {
     $uploadScreen.style.display = 'none';
     $appShell.style.display = 'block';
     _switchTab('dashboard');
+    // Stamp sync time BEFORE SyncManager.init() so it reads the correct
+    // value from localStorage and renders 'Synced today' straight away.
+    // meta.savedAt is set when data came from Drive (uses the file's own
+    // timestamp); for manual Excel uploads it is undefined so we use now.
+    if (meta.savedAt) {
+      SyncManager.markSyncedAt(meta.savedAt);
+    } else {
+      SyncManager.markSynced();
+    }
     SyncManager.init();
+    if (typeof LockManager !== 'undefined') LockManager.init();
     UserManager.applyAccess();
     showToast(`Loaded ${_rows.length.toLocaleString()} rows from "${meta.fileName}"`, 'success');
     // Write presence immediately so new users appear in the Users table
@@ -333,7 +343,7 @@ async function _tryLoadFromDrive(opts = {}) {
     _rows = rows;
     _showProgress('Rendering app…', 85);
     await new Promise(r => setTimeout(r, 120));
-    _launchApp({ fileName: 'Google Drive · tasks.json', sheetFound: true });
+    _launchApp({ fileName: 'Google Drive · tasks.json', sheetFound: true, savedAt: data.savedAt || null });
     return { loaded: true, error: null };
   } catch(e) {
     _hideProgress();

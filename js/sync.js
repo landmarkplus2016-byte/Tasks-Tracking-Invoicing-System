@@ -8,11 +8,12 @@
    - Force Refresh button triggers ImportManager.open()
 
    Public API:
-     SyncManager.init()            — call from _launchApp()
-     SyncManager.markSynced()      — call after successful import
-     SyncManager.dismissBanner()   — called by banner × button
-     SyncManager.getLastSync()     → ISO string | null
-     SyncManager.getDaysAgo()      → integer | null
+     SyncManager.init()                  — call from _launchApp()
+     SyncManager.markSynced()            — call after successful import (uses now)
+     SyncManager.markSyncedAt(isoStr)    — call after Drive load (uses file's savedAt)
+     SyncManager.dismissBanner()         — called by banner × button
+     SyncManager.getLastSync()           → ISO string | null
+     SyncManager.getDaysAgo()            → integer | null
    ══════════════════════════════════════════════════════ */
 
 'use strict';
@@ -39,9 +40,17 @@ const SyncManager = (() => {
     }, 60 * 60 * 1000);
   }
 
-  // ── Mark a successful import ──────────────────────────
+  // ── Mark a successful import (now) ───────────────────
   function markSynced() {
-    _lastSync  = new Date().toISOString();
+    markSyncedAt(new Date().toISOString());
+  }
+
+  // ── Mark sync using a specific timestamp ──────────────
+  // Used when loading tasks.json from Drive — uses the file's
+  // savedAt field so the badge shows when the data was last pushed,
+  // not just when this browser loaded it.
+  function markSyncedAt(isoStr) {
+    _lastSync  = isoStr || new Date().toISOString();
     _dismissed = false;
     localStorage.setItem(SYNC_KEY, _lastSync);
     _renderHeaderStatus();
@@ -141,5 +150,5 @@ const SyncManager = (() => {
   }
 
   // ── Public API ────────────────────────────────────────
-  return { init, markSynced, dismissBanner, getLastSync, getDaysAgo };
+  return { init, markSynced, markSyncedAt, dismissBanner, getLastSync, getDaysAgo };
 })();

@@ -26,10 +26,11 @@
 const GoogleDriveStorage = (() => {
   const DRIVE_API  = 'https://www.googleapis.com/drive/v3';
   const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3';
-  // drive.readonly: read any file/folder the user can access (needed to read
-  // tasks.json that was not created by this OAuth client).
-  // drive.file would only see files this app itself created — too restrictive.
-  const SCOPE      = 'https://www.googleapis.com/auth/drive.readonly';
+  // drive.readonly: read any file/folder the user can access (tasks.json).
+  // drive.file: create and update files this app creates (locks.json, active_users.json).
+  // Both scopes are required — readonly alone cannot write; drive.file alone
+  // cannot see files created outside this OAuth client (e.g. tasks.json).
+  const SCOPE      = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file';
 
   let _clientId    = '';
   let _token       = null;
