@@ -9,13 +9,14 @@ let _rows       = [];
 let _activeTab  = 'dashboard';
 
 // ── DOM refs (resolved after DOMContentLoaded) ────────────
-let $uploadScreen, $appShell, $dropZone, $fileInput,
+let $uploadScreen, $noAccessScreen, $appShell, $dropZone, $fileInput,
     $fileInfo, $fileName, $fileSize,
     $uploadProgress, $uploadProgressFill, $uploadProgressText,
     $uploadError, $dataBadge;
 
 document.addEventListener('DOMContentLoaded', () => {
   $uploadScreen       = document.getElementById('uploadScreen');
+  $noAccessScreen     = document.getElementById('noAccessScreen');
   $appShell           = document.getElementById('appShell');
   $dropZone           = document.getElementById('dropZone');
   $fileInput          = document.getElementById('fileInput');
@@ -190,24 +191,56 @@ function _hideUploadError() {
 }
 
 // ── Smart startup load (called once identity is confirmed) ─
+// Google Drive is always the source of truth.
+// Upload screen is only for Admin users — non-admins see a "contact admin" screen.
 async function _onUserReady() {
-  // 1. Try loading tasks.json from Google Drive Sync
+  const isAdmin = typeof UserManager !== 'undefined' && UserManager.isAdmin();
+
+  // 1. Always try Google Drive first (silent auth → explicit auth → fetch tasks.json)
   const driveLoaded = await _tryLoadFromDrive();
   if (driveLoaded) return;
 
-  // 2. Fall back to Storage Provider auto-connect (Dropbox / GDrive API key)
-  try {
-    const file = await Settings.autoConnect();
-    if (file) {
-      showToast('Auto-connecting via saved provider…', 'info');
-      _loadFile(file);
-      return;
+  // 2. Drive did not load — Admin gets the upload screen; non-Admin gets no-access screen
+  if (isAdmin) {
+    // Admin fallback: try Storage Provider auto-connect (Dropbox / GDrive API key)
+    try {
+      const file = await Settings.autoConnect();
+      if (file) {
+        showToast('Auto-connecting via saved provider…', 'info');
+        _loadFile(file);
+        return;
+      }
+    } catch (err) {
+      showToast(`Auto-connect failed: ${err.message}`, 'error');
     }
-  } catch (err) {
-    showToast(`Auto-connect failed: ${err.message}`, 'error');
+    // Admin sees the upload screen for manual first-time setup
+    _hideProgress();
+  } else {
+    // Non-admin: never show the upload screen — tell them to contact Admin
+    _showNoAccessScreen();
   }
+}
 
-  // 3. Nothing loaded — upload screen stays visible for manual file upload
+// ── No-access screen (non-admin, Drive not ready) ──────────
+function _showNoAccessScreen(msg) {
+  _hideProgress();
+  $uploadScreen.style.display = 'none';
+  $noAccessScreen.style.display = 'flex';
+  const msgEl = document.getElementById('noAccessMsg');
+  if (msgEl && msg) msgEl.innerHTML = msg;
+}
+
+// ── Retry Drive load (called from noAccessScreen button) ───
+async function _retryDriveLoad() {
+  $noAccessScreen.style.display = 'none';
+  $uploadScreen.style.display = 'flex';
+  _showProgress('Retrying Google Drive connection…', 20);
+  const driveLoaded = await _tryLoadFromDrive();
+  if (!driveLoaded) {
+    _hideProgress();
+    const isAdmin = typeof UserManager !== 'undefined' && UserManager.isAdmin();
+    if (!isAdmin) _showNoAccessScreen();
+  }
 }
 
 // ── Load tasks.json from Google Drive Sync ─────────────────
@@ -235,7 +268,7 @@ async function _tryLoadFromDrive() {
       try {
         await GoogleDriveStorage.authorize({ prompt: 'select_account' });
       } catch(e2) {
-        // User cancelled or authorization unavailable — stay on upload screen
+        // User cancelled or authorization unavailable
         return false;
       }
     }
@@ -246,7 +279,7 @@ async function _tryLoadFromDrive() {
     _showProgress('Loading from Google Drive…', 25);
     const raw = await GoogleDriveStorage.load(folderId, 'tasks.json');
     if (!raw) {
-      // File doesn't exist yet — first-time setup, show upload screen
+      // File doesn't exist yet — Drive is configured but no data pushed yet
       _hideProgress();
       return false;
     }

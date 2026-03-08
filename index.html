@@ -84,6 +84,44 @@
   </div>
 </div>
 
+<!-- ══ NO ACCESS SCREEN ══ -->
+<div id="noAccessScreen" style="display:none">
+  <div class="upload-bg-grid"></div>
+  <div class="upload-corner tl"></div>
+  <div class="upload-corner tr"></div>
+  <div class="upload-corner bl"></div>
+  <div class="upload-corner br"></div>
+
+  <div class="upload-center">
+    <div class="upload-brand">
+      <div class="upload-logo-icon">
+        <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+          <rect x="2" y="2" width="32" height="32" rx="6" stroke="#1a56db" stroke-width="1.5" stroke-dasharray="4 2"/>
+          <path d="M10 18 L18 10 L26 18" stroke="#1a56db" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M18 10 L18 26" stroke="#1a56db" stroke-width="2" stroke-linecap="round"/>
+          <path d="M12 26 L24 26" stroke="#1a56db" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="upload-brand-text">
+        <div class="upload-app-name">TTIS</div>
+        <div class="upload-app-sub">Tasks Tracking &amp; Invoicing System</div>
+        <div class="upload-app-by">by Landmark (LMP)</div>
+      </div>
+    </div>
+
+    <div class="noaccess-card">
+      <div class="noaccess-icon">&#128274;</div>
+      <div class="noaccess-title">No Data Available</div>
+      <div class="noaccess-msg" id="noAccessMsg">
+        Google Drive has not been configured or <code>tasks.json</code> does not exist yet.<br>
+        Please contact your Admin to get access to TTIS data.
+      </div>
+      <button class="noaccess-btn noaccess-retry" onclick="_retryDriveLoad()">&#8635; Retry Connection</button>
+      <button class="noaccess-btn noaccess-identity" onclick="UserManager.showChangeIdentityModal()">&#9997; Change My Identity</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ WELCOME MODAL ══ -->
 <div id="userWelcomeModal" class="um-overlay" style="display:none">
   <div class="um-dialog">

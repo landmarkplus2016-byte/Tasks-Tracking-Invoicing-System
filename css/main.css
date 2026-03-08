@@ -44,8 +44,9 @@ html, body {
 ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border3); }
 
-/* ══ Upload Screen ══════════════════════════════════════ */
-#uploadScreen {
+/* ══ Upload Screen + No-Access Screen ═══════════════════ */
+#uploadScreen,
+#noAccessScreen {
   position: fixed;
   inset: 0;
   background: var(--bg);
@@ -55,6 +56,74 @@ html, body {
   z-index: 500;
   overflow: hidden;
 }
+
+/* ══ No-Access card ══════════════════════════════════════ */
+.noaccess-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 40px 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+  max-width: 420px;
+  width: 100%;
+  animation: fadeIn .3s ease both;
+  box-shadow: 0 12px 40px rgba(13,30,51,.08);
+}
+.noaccess-icon {
+  font-size: 44px;
+  line-height: 1;
+  opacity: .55;
+}
+.noaccess-title {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: .5px;
+}
+.noaccess-msg {
+  font-size: 13px;
+  color: var(--text2);
+  line-height: 1.7;
+}
+.noaccess-msg code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--text);
+}
+.noaccess-btn {
+  display: block;
+  width: 100%;
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all .15s;
+}
+.noaccess-retry {
+  background: var(--cyan);
+  border: 1px solid var(--cyan);
+  color: #fff;
+}
+.noaccess-retry:hover { opacity: .88; }
+.noaccess-identity {
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--text2);
+}
+.noaccess-identity:hover { background: var(--bg3); color: var(--text); }
 
 .upload-bg-grid {
   position: absolute;
