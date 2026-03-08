@@ -576,34 +576,79 @@ const Settings = (() => {
     });
   }
 
+  // ── Permissions definitions ────────────────────────────
+  const PERM_DEFS = [
+    { icon: '⚙',  label: 'Settings',      admin: true,  editor: false, viewer: false },
+    { icon: '↑',  label: 'Import PC',      admin: true,  editor: false, viewer: false },
+    { icon: '↺',  label: 'Load File',      admin: true,  editor: false, viewer: false },
+    { icon: '↻',  label: 'Force Refresh',  admin: true,  editor: true,  viewer: false },
+    { icon: '✏',  label: 'Edit Tasks',     admin: true,  editor: true,  viewer: false },
+    { icon: '👥', label: 'Manage Users',   admin: true,  editor: false, viewer: false },
+  ];
+
+  function _permGrid(role) {
+    return '<div class="perm-grid">' + PERM_DEFS.map(p => {
+      const has = role === 'Admin' ? p.admin : role === 'Editor' ? p.editor : p.viewer;
+      return `<span class="perm-cell perm-cell-${has ? 'yes' : 'no'}" title="${_esc(p.label)}">${p.icon}</span>`;
+    }).join('') + '</div>';
+  }
+
   // ── Users card ─────────────────────────────────────────
   function _usersCardHtml(users) {
     const isAdmin = typeof UserManager !== 'undefined' && UserManager.isAdmin();
     const me      = typeof UserManager !== 'undefined' ? UserManager.getUser() : null;
+    const ALL_ROLES = ['Admin', 'Editor', 'Viewer'];
 
     const rows = users.length ? users.map(u => {
-      const isSelf   = me && u.name === me.name;
-      const lastSeen = u.lastActive ? new Date(u.lastActive).toLocaleString() : '—';
-      const roleOpts = ['Admin','Viewer'].map(r =>
+      const isSelf    = me && u.name === me.name;
+      const isPending = !!u._invited;
+      const roleOpts  = ALL_ROLES.map(r =>
         `<option value="${r}"${u.role === r ? ' selected' : ''}>${r}</option>`).join('');
-      return `<tr class="${isSelf ? 'stg-users-self' : ''}">
-        <td>${_esc(u.name)}${isSelf ? ' <span class="stg-users-you">You</span>' : ''}</td>
-        <td>${isAdmin
-          ? `<select class="stg-users-role-sel" data-name="${_esc(u.name)}">${roleOpts}</select>`
-          : `<span class="stg-users-role">${_esc(u.role||'')}</span>`}</td>
-        <td class="stg-users-last">${lastSeen}</td>
+      const lastCell  = isPending
+        ? '<span class="stg-invite-tag">Pending Invite</span>'
+        : (u.lastActive ? new Date(u.lastActive).toLocaleString() : '—');
+      const roleCell  = isAdmin && !isPending
+        ? `<select class="stg-users-role-sel" data-name="${_esc(u.name)}">${roleOpts}</select>`
+        : `<span class="stg-role-badge stg-role-${(u.role||'').toLowerCase()}">${_esc(u.role||'')}</span>`;
+      const actionCell = isPending
+        ? `<button class="stg-btn stg-invite-revoke" data-name="${_esc(u.name)}">Revoke</button>`
+        : '';
+      return `<tr class="${isSelf ? 'stg-users-self' : ''}${isPending ? ' stg-users-pending' : ''}">
+        <td>${_esc(u.name)}${isSelf ? ' <span class="stg-users-you">You</span>' : ''}${isPending ? ' <span class="stg-users-you" style="background:rgba(217,119,6,.15);color:#d97706">Invited</span>' : ''}</td>
+        <td>${roleCell}</td>
+        <td>${_permGrid(u.role || 'Viewer')}</td>
+        <td class="stg-users-last">${lastCell}</td>
+        <td>${actionCell}</td>
       </tr>`;
-    }).join('') : `<tr><td colspan="3" class="stg-users-empty">No users recorded yet</td></tr>`;
+    }).join('') : `<tr><td colspan="5" class="stg-users-empty">No users recorded yet</td></tr>`;
 
     return `
       <div class="stg-users-wrap">
         <div class="stg-users-actions">
           <button class="stg-btn stg-btn-test" id="stgUsersRefreshBtn">&#8635; Refresh</button>
           <button class="stg-btn stg-btn-save" id="stgUsersChangeBtn" onclick="UserManager.showChangeIdentityModal()">&#9997; Change My Name/Role</button>
-          ${isAdmin && users.length ? '<button class="stg-btn stg-btn-export" id="stgUsersSaveRolesBtn">Save Role Changes</button>' : ''}
+          ${isAdmin ? '<button class="stg-btn stg-btn-import" id="stgAddUserBtn">&#43; Add User</button>' : ''}
+          ${isAdmin && users.filter(u => !u._invited).length ? '<button class="stg-btn stg-btn-export" id="stgUsersSaveRolesBtn">Save Role Changes</button>' : ''}
         </div>
+
+        <div class="stg-invite-form" id="stgInviteForm" style="display:none">
+          <div class="stg-invite-row">
+            <input class="stg-input stg-invite-name" id="stgInvName" type="text" placeholder="Full name of new user" autocomplete="off">
+            <select class="stg-users-role-sel" id="stgInvRole">
+              <option value="Admin">Admin</option>
+              <option value="Editor">Editor</option>
+              <option value="Viewer" selected>Viewer</option>
+            </select>
+            <button class="stg-btn stg-btn-save" id="stgInvAddBtn">Add</button>
+            <button class="stg-btn" id="stgInvCancelBtn">Cancel</button>
+          </div>
+          <div class="stg-field-hint" style="margin:6px 0 0">
+            When this person opens TTIS and enters the same name, they will automatically receive the pre-assigned role.
+          </div>
+        </div>
+
         <table class="stg-users-tbl">
-          <thead><tr><th>Name</th><th>Role</th><th>Last Active</th></tr></thead>
+          <thead><tr><th>Name</th><th>Role</th><th>Permissions</th><th>Last Active</th><th></th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>`;
@@ -619,12 +664,40 @@ const Settings = (() => {
 
   function _bindUsersCardEvents() {
     document.getElementById('stgUsersRefreshBtn')?.addEventListener('click', _refreshUsersCard);
+
     document.getElementById('stgUsersSaveRolesBtn')?.addEventListener('click', async () => {
-      const selects = document.querySelectorAll('.stg-users-role-sel');
-      for (const sel of selects) {
-        await UserManager.updateUserRole(sel.dataset.name, sel.value);
-      }
+      const selects = document.querySelectorAll('.stg-users-role-sel[data-name]');
+      for (const sel of selects) await UserManager.updateUserRole(sel.dataset.name, sel.value);
       showToast('Role changes saved', 'success');
+    });
+
+    // Add user / invite flow
+    document.getElementById('stgAddUserBtn')?.addEventListener('click', () => {
+      const form = document.getElementById('stgInviteForm');
+      if (form) { form.style.display = 'block'; document.getElementById('stgInvName')?.focus(); }
+    });
+    document.getElementById('stgInvCancelBtn')?.addEventListener('click', () => {
+      const form = document.getElementById('stgInviteForm');
+      if (form) { form.style.display = 'none'; document.getElementById('stgInvName').value = ''; }
+    });
+    document.getElementById('stgInvAddBtn')?.addEventListener('click', async () => {
+      const name = (document.getElementById('stgInvName')?.value || '').trim();
+      const role = document.getElementById('stgInvRole')?.value || 'Viewer';
+      if (!name) { showToast('Enter the new user\'s full name', 'error'); return; }
+      await UserManager.createInvite(name, role);
+      document.getElementById('stgInviteForm').style.display = 'none';
+      document.getElementById('stgInvName').value = '';
+      showToast(`Invite created for ${name} (${role})`, 'success');
+      _refreshUsersCard();
+    });
+
+    // Revoke invite buttons
+    document.querySelectorAll('.stg-invite-revoke').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        await UserManager.revokeInvite(btn.dataset.name);
+        showToast(`Invite for ${btn.dataset.name} revoked`, 'success');
+        _refreshUsersCard();
+      });
     });
   }
 

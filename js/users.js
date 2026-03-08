@@ -44,25 +44,31 @@ const UserManager = (() => {
   // ── Getters ────────────────────────────────────────────
   function getUser()   { return _user; }
   function isAdmin()   { return _user?.role === 'Admin'; }
+  function isEditor()  { return _user?.role === 'Editor'; }
   function isViewer()  { return _user?.role === 'Viewer'; }
   function getName()   { return _user?.name  || 'Unknown'; }
   function nowIso()    { return new Date().toISOString(); }
 
   // ── Access control ─────────────────────────────────────
+  // Roles:   Admin  — full access
+  //          Editor — Force Refresh + edit tasks; no Settings/Import/Load
+  //          Viewer — read-only
   function applyAccess() {
-    if (isAdmin()) {
-      document.querySelectorAll('.admin-only').forEach(el => el.style.removeProperty('display'));
-      return;
-    }
-    // Viewer: hide admin controls
-    document.querySelectorAll('.admin-only').forEach(el => { el.style.display = 'none'; });
+    const role     = _user?.role || 'Viewer';
+    const admin    = role === 'Admin';
+    const editor   = role === 'Editor';
 
-    // Intercept Settings tab
-    document.querySelectorAll('.tab-btn[data-tab="settings"]').forEach(btn => {
-      btn.onclick = e => {
-        e.stopImmediatePropagation();
-        showToast('Admin access required', 'error');
-      };
+    // perm-admin: Admin only
+    document.querySelectorAll('.perm-admin').forEach(el => {
+      el.style.display = admin ? '' : 'none';
+    });
+    // perm-editor: Admin + Editor
+    document.querySelectorAll('.perm-editor').forEach(el => {
+      el.style.display = (admin || editor) ? '' : 'none';
+    });
+    // Legacy class still supported
+    document.querySelectorAll('.admin-only').forEach(el => {
+      el.style.display = admin ? '' : 'none';
     });
   }
 
@@ -82,17 +88,43 @@ const UserManager = (() => {
     roleErr.style.display = 'none';
 
     const name = (nameEl?.value || '').trim();
-    const role = roleEl?.value || '';
-    let ok = true;
-    if (!name) { nameErr.style.display = 'block'; ok = false; }
-    if (!role) { roleErr.style.display = 'block'; ok = false; }
-    if (!ok) return;
+    if (!name) { nameErr.style.display = 'block'; return; }
+
+    // Check for pre-assigned invite (overrides dropdown selection)
+    const invite = _findInvite(name);
+    const role   = invite ? invite.role : (roleEl?.value || '');
+    if (!role) { roleErr.style.display = 'block'; return; }
+
+    // Clear the invite flag so it's not matched again
+    if (invite) _clearInviteFlag(name);
 
     _setUser(name, role);
     document.getElementById('userWelcomeModal').style.display = 'none';
     _startHeartbeat();
-    showToast(`Welcome, ${name}!`, 'success');
+    showToast(invite
+      ? `Welcome, ${name}! Your role (${role}) was pre-assigned by an Admin.`
+      : `Welcome, ${name}!`, 'success');
     if (_readyCb) _readyCb();
+  }
+
+  // Checks name input live — pre-fills role if an invite exists
+  function checkWelcomeInvite() {
+    const name    = (document.getElementById('uwName')?.value || '').trim();
+    const roleEl  = document.getElementById('uwRole');
+    const hintEl  = document.getElementById('uwInviteHint');
+    const roleErr = document.getElementById('uwRoleErr');
+    if (!roleEl) return;
+
+    const invite = name ? _findInvite(name) : null;
+    if (invite) {
+      roleEl.value    = invite.role;
+      roleEl.disabled = true;
+      if (hintEl)  hintEl.style.display  = 'block';
+      if (roleErr) roleErr.style.display = 'none';
+    } else {
+      roleEl.disabled = false;
+      if (hintEl) hintEl.style.display = 'none';
+    }
   }
 
   function _setUser(name, role) {
@@ -210,14 +242,60 @@ const UserManager = (() => {
 
     el.innerHTML = sorted.slice(0, 6).map(u => {
       const isSelf = u.name === _user?.name;
-      const tip    = `${u.name} (${u.role})${isSelf ? ' — You' : ''}`;
+      const role   = u.role || '';
+      const tip    = `${u.name} · ${role}${isSelf ? ' (You)' : ''}`;
       const color  = _colorFor(u.initials || u.name?.slice(0,2) || '?');
       const inits  = _esc(u.initials || (u.name || '').slice(0,2).toUpperCase() || '?');
-      return `<div class="user-avatar${isSelf ? ' user-avatar-self' : ''}" style="background:${color}" title="${_esc(tip)}">${inits}</div>`;
+      return `<div class="user-avatar${isSelf ? ' user-avatar-self' : ''}" data-role="${_esc(role)}" style="background:${color}" title="${_esc(tip)}">${inits}</div>`;
     }).join('');
 
     if (sorted.length > 6) {
       el.innerHTML += `<div class="user-avatar user-avatar-more" title="${sorted.length - 6} more active">+${sorted.length - 6}</div>`;
+    }
+  }
+
+  // ── Invite system ─────────────────────────────────────
+  function _findInvite(name) {
+    const norm = name.toLowerCase().trim();
+    return _allUsers.find(u => u._invited && u.name.toLowerCase().trim() === norm) || null;
+  }
+
+  function _clearInviteFlag(name) {
+    const norm = name.toLowerCase().trim();
+    const u    = _allUsers.find(x => x._invited && x.name.toLowerCase().trim() === norm);
+    if (u) { delete u._invited; localStorage.setItem(ALL_USERS_KEY, JSON.stringify(_allUsers)); }
+  }
+
+  async function createInvite(name, role) {
+    if (!name || !role) return null;
+    // Don't overwrite an existing active user — just update their role
+    const existing = _allUsers.find(u => u.name.toLowerCase().trim() === name.toLowerCase().trim() && !u._invited);
+    if (existing) {
+      await updateUserRole(existing.name, role);
+      return existing;
+    }
+    const entry = { name, role, initials: _initials(name), _invited: true, lastActive: null };
+    _upsertAllUsers(entry);
+    if (typeof GoogleDriveStorage !== 'undefined' && GoogleDriveStorage.isAuthorized()) {
+      const folderId = _getFolderId();
+      if (folderId) {
+        try { await GoogleDriveStorage.save(folderId, ACTIVE_FILE, JSON.stringify(_allUsers)); } catch(e) {}
+      }
+    }
+    return entry;
+  }
+
+  async function revokeInvite(name) {
+    const idx = _allUsers.findIndex(u => u.name === name && u._invited);
+    if (idx >= 0) {
+      _allUsers.splice(idx, 1);
+      localStorage.setItem(ALL_USERS_KEY, JSON.stringify(_allUsers));
+      if (typeof GoogleDriveStorage !== 'undefined' && GoogleDriveStorage.isAuthorized()) {
+        const folderId = _getFolderId();
+        if (folderId) {
+          try { await GoogleDriveStorage.save(folderId, ACTIVE_FILE, JSON.stringify(_allUsers)); } catch(e) {}
+        }
+      }
     }
   }
 
@@ -296,11 +374,12 @@ const UserManager = (() => {
   // ── Public API ─────────────────────────────────────────
   return {
     init,
-    getUser, isAdmin, isViewer, getName,
+    getUser, isAdmin, isEditor, isViewer, getName,
     applyAccess,
-    submitWelcome,
+    submitWelcome, checkWelcomeInvite,
     showChangeIdentityModal, hideChangeIdentityModal, submitChangeIdentity,
     getAllUsers, updateUserRole,
+    createInvite, revokeInvite,
     stampCreated, stampUpdated,
     renderAvatarRow: _renderAvatarRow
   };

@@ -1743,3 +1743,81 @@ tr.r-row-needpo:hover td { background: rgba(217,119,6,.08) !important; }
 }
 .stg-users-last { color: var(--text3); font-size: 12px; font-family: 'JetBrains Mono', monospace; }
 .stg-users-empty { color: var(--text3); text-align: center; padding: 20px; }
+.stg-users-pending td { opacity: .75; }
+
+/* ── Role badge (in users table for non-editable rows) ════ */
+.stg-role-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.stg-role-admin  { background: rgba(217,119,6,.14);  color: #d97706; }
+.stg-role-editor { background: rgba(26,86,219,.13);  color: #1a56db; }
+.stg-role-viewer { background: rgba(107,114,128,.13); color: #6b7280; }
+
+/* ── Avatar role ring ══════════════════════════════════════ */
+.user-avatar[data-role="Admin"]  { box-shadow: 0 0 0 2px #d97706, 0 0 0 4px var(--bg2); }
+.user-avatar[data-role="Editor"] { box-shadow: 0 0 0 2px #1a56db, 0 0 0 4px var(--bg2); }
+.user-avatar[data-role="Viewer"] { box-shadow: 0 0 0 2px #6b7280, 0 0 0 4px var(--bg2); }
+
+/* ── Permissions grid ══════════════════════════════════════ */
+.perm-grid { display: flex; gap: 3px; }
+.perm-cell {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  cursor: default;
+}
+.perm-cell-yes { background: rgba(5,150,105,.14); color: #059669; }
+.perm-cell-no  { background: rgba(0,0,0,.05); color: #c0c7d0; }
+
+/* ── Invite form (inline in users card) ════════════════════ */
+.stg-invite-form {
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.stg-invite-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.stg-invite-name { flex: 1; min-width: 180px; height: 34px; }
+.stg-invite-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(217,119,6,.12);
+  color: #d97706;
+}
+.stg-invite-revoke {
+  font-size: 11px;
+  padding: 3px 8px;
+  height: 26px;
+  opacity: .75;
+}
+.stg-invite-revoke:hover { opacity: 1; }
+
+/* ── Welcome modal — invite hint ═══════════════════════════ */
+.um-invite-hint {
+  font-size: 12px;
+  color: #059669;
+  background: rgba(5,150,105,.1);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-top: 4px;
+  font-weight: 500;
+}

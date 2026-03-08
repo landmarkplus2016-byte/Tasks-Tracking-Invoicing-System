@@ -100,7 +100,9 @@
     <div class="um-field-group">
       <label class="um-label">Full Name</label>
       <input class="um-input" id="uwName" type="text" placeholder="e.g. Ahmed Hassan"
-             autocomplete="off" onkeydown="if(event.key==='Enter') UserManager.submitWelcome()">
+             autocomplete="off"
+             oninput="UserManager.checkWelcomeInvite()"
+             onkeydown="if(event.key==='Enter') UserManager.submitWelcome()">
       <div class="um-err" id="uwNameErr">Full name is required</div>
     </div>
     <div class="um-field-group">
@@ -108,8 +110,10 @@
       <select class="um-select" id="uwRole">
         <option value="">— Select a role —</option>
         <option value="Admin">Admin</option>
+        <option value="Editor">Editor</option>
         <option value="Viewer">Viewer</option>
       </select>
+      <div class="um-invite-hint" id="uwInviteHint" style="display:none">&#10003; Role pre-assigned by an Admin</div>
       <div class="um-err" id="uwRoleErr">Please select a role</div>
     </div>
     <button class="um-submit" onclick="UserManager.submitWelcome()">Continue</button>
@@ -131,6 +135,7 @@
       <label class="um-label">Role</label>
       <select class="um-select" id="ciRole">
         <option value="Admin">Admin</option>
+        <option value="Editor">Editor</option>
         <option value="Viewer">Viewer</option>
       </select>
     </div>
@@ -165,7 +170,7 @@
       <button class="tab-btn" data-tab="tasks">Tasks</button>
       <button class="tab-btn" data-tab="invoicing">Invoicing</button>
       <button class="tab-btn" data-tab="readiness">Invoice Readiness</button>
-      <button class="tab-btn admin-only" data-tab="settings">Settings</button>
+      <button class="tab-btn perm-admin" data-tab="settings">Settings</button>
     </div>
 
     <div class="header-right">
@@ -174,13 +179,13 @@
 
       <div class="data-badge" id="dataBadge"></div>
       <div id="syncStatus" class="sync-status-badge sync-status-never" title="No sync yet"></div>
-      <button class="force-refresh-btn admin-only" onclick="ImportManager.open()" title="Force an immediate sync with PC_Tracking file">
+      <button class="force-refresh-btn perm-editor" onclick="ImportManager.open()" title="Force an immediate sync with PC_Tracking file">
         &#8635; Force Refresh
       </button>
-      <button class="import-pc-btn admin-only" onclick="ImportManager.open()" title="Import from PC Tracking file">
+      <button class="import-pc-btn perm-admin" onclick="ImportManager.open()" title="Import from PC Tracking file">
         &#8679; Import PC
       </button>
-      <button class="reload-btn admin-only" id="reloadBtn" title="Load a different file">
+      <button class="reload-btn perm-admin" id="reloadBtn" title="Load a different file">
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <path d="M12 7A5 5 0 112 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
           <path d="M12 3v4h-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
