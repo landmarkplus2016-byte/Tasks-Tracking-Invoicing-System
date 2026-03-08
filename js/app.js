@@ -197,7 +197,7 @@ async function _onUserReady() {
   const isAdmin = typeof UserManager !== 'undefined' && UserManager.isAdmin();
 
   // 1. Always try Google Drive first (silent auth → explicit auth → fetch tasks.json)
-  const driveLoaded = await _tryLoadFromDrive();
+  const { loaded: driveLoaded, error: driveError } = await _tryLoadFromDrive();
   if (driveLoaded) return;
 
   // 2. Drive did not load — Admin gets the upload screen; non-Admin gets no-access screen
@@ -216,8 +216,8 @@ async function _onUserReady() {
     // Admin sees the upload screen for manual first-time setup
     _hideProgress();
   } else {
-    // Non-admin: never show the upload screen — tell them to contact Admin
-    _showNoAccessScreen();
+    // Non-admin: show no-access screen with specific Drive error if available
+    _showNoAccessScreen(driveError || null);
   }
 }
 
@@ -227,77 +227,115 @@ function _showNoAccessScreen(msg) {
   $uploadScreen.style.display = 'none';
   $noAccessScreen.style.display = 'flex';
   const msgEl = document.getElementById('noAccessMsg');
-  if (msgEl && msg) msgEl.innerHTML = msg;
+  if (msgEl) {
+    if (msg) {
+      msgEl.innerHTML = `<strong>Could not load data from Google Drive:</strong><br><code style="font-size:0.85em;word-break:break-all">${_esc(msg)}</code><br><br>Please try again or contact your Admin.`;
+    } else {
+      msgEl.innerHTML = 'Google Drive connection failed or was cancelled.<br>Please use the <strong>Retry Connection</strong> button to sign in again.';
+    }
+  }
+}
+
+function _esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 // ── Retry Drive load (called from noAccessScreen button) ───
+// Forces a full fresh OAuth flow so the user can pick a different account
+// or re-consent after a scope change (drive.file → drive.readonly).
 async function _retryDriveLoad() {
   $noAccessScreen.style.display = 'none';
   $uploadScreen.style.display = 'flex';
-  _showProgress('Retrying Google Drive connection…', 20);
-  const driveLoaded = await _tryLoadFromDrive();
-  if (!driveLoaded) {
+  _showProgress('Connecting to Google Drive…', 10);
+
+  // Clear any stale token so we always show the account picker on retry
+  if (typeof GoogleDriveStorage !== 'undefined') GoogleDriveStorage.reset();
+
+  const { loaded, error } = await _tryLoadFromDrive({ forceAuth: true });
+  if (!loaded) {
     _hideProgress();
     const isAdmin = typeof UserManager !== 'undefined' && UserManager.isAdmin();
-    if (!isAdmin) _showNoAccessScreen();
+    if (!isAdmin) _showNoAccessScreen(error || null);
+    else if (error) showToast(error, 'error');
   }
 }
 
 // ── Load tasks.json from Google Drive Sync ─────────────────
-async function _tryLoadFromDrive() {
-  if (typeof GoogleDriveStorage === 'undefined') return false;
+// Returns { loaded: bool, error: string|null }
+async function _tryLoadFromDrive(opts = {}) {
+  const forceAuth = opts.forceAuth || false;
+
+  if (typeof GoogleDriveStorage === 'undefined') return { loaded: false, error: 'GoogleDriveStorage not available' };
 
   const folderId = _gdCfg('folderId');
   const clientId = _gdCfg('clientId');
-  if (!folderId || !clientId) return false;
+  console.log(`[TTIS] _tryLoadFromDrive — clientId: ${clientId ? clientId.slice(0,20)+'…' : '(none)'}, folderId: ${folderId}`);
+  if (!folderId || !clientId) return { loaded: false, error: 'Drive not configured (no clientId or folderId)' };
 
   // GIS loads async — wait up to 4 s for it to become available
   if (!GoogleDriveStorage.isReady()) {
+    _showProgress('Waiting for Google Identity Services…', 15);
     const ready = await _waitForGis(4000);
-    if (!ready) return false;
+    if (!ready) return { loaded: false, error: 'Google Identity Services script did not load — check network' };
     GoogleDriveStorage.init(clientId);
-    if (!GoogleDriveStorage.isReady()) return false;
+    if (!GoogleDriveStorage.isReady()) return { loaded: false, error: 'Could not initialise Google Drive client — check the OAuth Client ID' };
   }
 
-  // Attempt a silent token first; if that fails, try explicit auth (account picker).
-  // This ensures new users (no prior token) still auto-load from Drive after welcome modal.
+  // Auth flow:
+  //   normal startup : silent first, then account-picker if silent fails
+  //   forceAuth      : skip silent, go straight to account-picker
   if (!GoogleDriveStorage.isAuthorized()) {
-    try {
-      await GoogleDriveStorage.authorize({ prompt: '' });
-    } catch(e) {
+    _showProgress('Waiting for Google sign-in…', 20);
+    if (!forceAuth) {
+      try {
+        await GoogleDriveStorage.authorize({ prompt: '' });
+        console.log('[TTIS] silent auth succeeded');
+      } catch(e) {
+        console.log('[TTIS] silent auth failed, trying account picker:', e.message);
+        try {
+          await GoogleDriveStorage.authorize({ prompt: 'select_account' });
+          console.log('[TTIS] account-picker auth succeeded');
+        } catch(e2) {
+          return { loaded: false, error: null }; // user cancelled — no error message needed
+        }
+      }
+    } else {
       try {
         await GoogleDriveStorage.authorize({ prompt: 'select_account' });
+        console.log('[TTIS] forced account-picker auth succeeded');
       } catch(e2) {
-        // User cancelled or authorization unavailable
-        return false;
+        return { loaded: false, error: null }; // user cancelled
       }
     }
   }
 
+  console.log('[TTIS] authorized — token present, fetching tasks.json from folder:', folderId);
+
   // Try fetching tasks.json
   try {
-    _showProgress('Loading from Google Drive…', 25);
+    _showProgress('Loading data from Google Drive…', 35);
     const raw = await GoogleDriveStorage.load(folderId, 'tasks.json');
     if (!raw) {
-      // File doesn't exist yet — Drive is configured but no data pushed yet
-      _hideProgress();
-      return false;
+      // File found in search but empty, or not found at all
+      return { loaded: false, error: 'tasks.json not found in the configured Drive folder. Has the Admin pushed data yet?' };
     }
 
     _showProgress('Parsing data…', 60);
     const data = JSON.parse(raw);
     const rows = Array.isArray(data) ? data : (data.rows || []);
-    if (!rows.length) { _hideProgress(); return false; }
+    if (!rows.length) {
+      return { loaded: false, error: 'tasks.json exists but contains no rows.' };
+    }
 
     _rows = rows;
     _showProgress('Rendering app…', 85);
     await new Promise(r => setTimeout(r, 120));
     _launchApp({ fileName: 'Google Drive · tasks.json', sheetFound: true });
-    return true;
+    return { loaded: true, error: null };
   } catch(e) {
     _hideProgress();
-    console.warn('[TTIS] Drive load failed:', e.message);
-    return false;
+    console.error('[TTIS] Drive load failed:', e.message);
+    return { loaded: false, error: e.message };
   }
 }
 

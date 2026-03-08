@@ -26,8 +26,10 @@
 const GoogleDriveStorage = (() => {
   const DRIVE_API  = 'https://www.googleapis.com/drive/v3';
   const UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3';
-  // drive.file: access only to files created by this app
-  const SCOPE      = 'https://www.googleapis.com/auth/drive.file';
+  // drive.readonly: read any file/folder the user can access (needed to read
+  // tasks.json that was not created by this OAuth client).
+  // drive.file would only see files this app itself created — too restrictive.
+  const SCOPE      = 'https://www.googleapis.com/auth/drive.readonly';
 
   let _clientId    = '';
   let _token       = null;
@@ -52,6 +54,12 @@ const GoogleDriveStorage = (() => {
   // ── Status ────────────────────────────────────────────
   function isReady()      { return !!_clientId && _gisReady() && !!_tokenClient; }
   function isAuthorized() { return !!_token; }
+
+  // ── Reset (clears token so next authorize() forces a fresh flow) ──
+  function reset() {
+    _token = null;
+    console.log('[GDrive] token cleared — next authorize() will prompt');
+  }
 
   // ── OAuth2 authorize ───────────────────────────────────
   // options.prompt:
@@ -111,9 +119,13 @@ const GoogleDriveStorage = (() => {
   // ── Load file from folder ─────────────────────────────
   async function load(folderId, filename) {
     _assertAuth();
+    console.log(`[GDrive] load() — token present: ${!!_token}, folder: ${folderId}, file: ${filename}`);
     const id = await _findFile(folderId, filename);
-    if (!id) return null;
-
+    if (!id) {
+      console.warn(`[GDrive] "${filename}" not found in folder ${folderId}`);
+      return null;
+    }
+    console.log(`[GDrive] found "${filename}" with id: ${id} — fetching content`);
     const res = await _fetch(`${DRIVE_API}/files/${id}?alt=media`);
     if (!res.ok) throw new Error(await _errMsg(res));
     return await res.text();
@@ -123,9 +135,15 @@ const GoogleDriveStorage = (() => {
   async function _findFile(folderId, filename) {
     const q   = `'${folderId}' in parents and name='${filename}' and trashed=false`;
     const url = `${DRIVE_API}/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=1`;
+    console.log(`[GDrive] _findFile query: ${q}`);
     const res = await _fetch(url);
-    if (!res.ok) throw new Error(await _errMsg(res));
+    if (!res.ok) {
+      const msg = await _errMsg(res);
+      console.error(`[GDrive] files.list failed — HTTP ${res.status}: ${msg}`);
+      throw new Error(`Drive API error (HTTP ${res.status}): ${msg}`);
+    }
     const data = await res.json();
+    console.log(`[GDrive] files.list response:`, data);
     return data.files?.[0]?.id || null;
   }
 
@@ -185,5 +203,5 @@ const GoogleDriveStorage = (() => {
   }
 
   // ── Public API ────────────────────────────────────────
-  return { init, isReady, isAuthorized, authorize, testConnection, save, load };
+  return { init, reset, isReady, isAuthorized, authorize, testConnection, save, load };
 })();
