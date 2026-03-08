@@ -22,9 +22,12 @@ const UserManager = (() => {
   let _allUsers   = [];
   let _hbTimer    = null;
   let _lastAct    = 0;
+  let _readyCb    = null;   // called when identity is confirmed
 
   // ── Init ───────────────────────────────────────────────
-  function init() {
+  function init(onReady) {
+    _readyCb = typeof onReady === 'function' ? onReady : null;
+
     try { const s = localStorage.getItem(USER_KEY);      if (s) _user     = JSON.parse(s); } catch(e) {}
     try { const s = localStorage.getItem(ALL_USERS_KEY); if (s) _allUsers = JSON.parse(s); } catch(e) {}
 
@@ -33,6 +36,8 @@ const UserManager = (() => {
     } else {
       _updateLastActive();
       _startHeartbeat();
+      // Identity already known — notify after a tick so DOM is fully ready
+      if (_readyCb) setTimeout(_readyCb, 0);
     }
   }
 
@@ -87,7 +92,7 @@ const UserManager = (() => {
     document.getElementById('userWelcomeModal').style.display = 'none';
     _startHeartbeat();
     showToast(`Welcome, ${name}!`, 'success');
-    _tryAutoAuthorize();
+    if (_readyCb) _readyCb();
   }
 
   function _setUser(name, role) {
@@ -127,30 +132,6 @@ const UserManager = (() => {
     applyAccess();
     _renderAvatarRow([_user]);
     showToast(`Identity updated: ${name} (${role})`, 'success');
-  }
-
-  // ── Auto Google Drive authorization ───────────────────
-  async function _tryAutoAuthorize() {
-    if (typeof GoogleDriveStorage === 'undefined') return;
-    if (GoogleDriveStorage.isAuthorized()) {
-      // Already authorized — just fire a heartbeat immediately
-      _sendHeartbeat();
-      return;
-    }
-    if (!GoogleDriveStorage.isReady()) return;
-
-    // Small delay so the welcome toast is visible before the OAuth popup
-    await new Promise(r => setTimeout(r, 600));
-
-    try {
-      showToast('Connecting to Google Drive…', 'info');
-      await GoogleDriveStorage.authorize();
-      showToast('Google Drive connected', 'success');
-      _sendHeartbeat();
-    } catch(e) {
-      // User may have closed the popup — non-fatal, Drive features just won't work
-      console.warn('[TTIS] Auto Drive auth skipped:', e.message);
-    }
   }
 
   // ── Heartbeat + presence ───────────────────────────────

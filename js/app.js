@@ -29,11 +29,10 @@ document.addEventListener('DOMContentLoaded', () => {
   $dataBadge          = document.getElementById('dataBadge');
 
   PriceList.init();
-  UserManager.init();
+  UserManager.init(_onUserReady);
   _bindUploadEvents();
   _bindTabEvents();
   _bindReloadBtn();
-  _tryAutoConnect();
 });
 
 // ── Upload events ──────────────────────────────────────────
@@ -190,17 +189,99 @@ function _hideUploadError() {
   $uploadError.style.display = 'none';
 }
 
-// ── Auto-connect on startup ────────────────────────────────
-async function _tryAutoConnect() {
+// ── Smart startup load (called once identity is confirmed) ─
+async function _onUserReady() {
+  // 1. Try loading tasks.json from Google Drive Sync
+  const driveLoaded = await _tryLoadFromDrive();
+  if (driveLoaded) return;
+
+  // 2. Fall back to Storage Provider auto-connect (Dropbox / GDrive API key)
   try {
     const file = await Settings.autoConnect();
     if (file) {
       showToast('Auto-connecting via saved provider…', 'info');
       _loadFile(file);
+      return;
     }
   } catch (err) {
     showToast(`Auto-connect failed: ${err.message}`, 'error');
   }
+
+  // 3. Nothing loaded — upload screen stays visible for manual file upload
+}
+
+// ── Load tasks.json from Google Drive Sync ─────────────────
+async function _tryLoadFromDrive() {
+  if (typeof GoogleDriveStorage === 'undefined') return false;
+
+  const folderId = _gdCfg('folderId');
+  const clientId = _gdCfg('clientId');
+  if (!folderId || !clientId) return false;
+
+  // GIS loads async — wait up to 4 s for it to become available
+  if (!GoogleDriveStorage.isReady()) {
+    const ready = await _waitForGis(4000);
+    if (!ready) return false;
+    GoogleDriveStorage.init(clientId);
+    if (!GoogleDriveStorage.isReady()) return false;
+  }
+
+  // Attempt a silent token (prompt:'') — no popup; rejects if not possible
+  if (!GoogleDriveStorage.isAuthorized()) {
+    try {
+      await GoogleDriveStorage.authorize({ prompt: '' });
+    } catch(e) {
+      // Silent auth unavailable — show upload screen, user can auth manually
+      return false;
+    }
+  }
+
+  // Try fetching tasks.json
+  try {
+    _showProgress('Loading from Google Drive…', 25);
+    const raw = await GoogleDriveStorage.load(folderId, 'tasks.json');
+    if (!raw) {
+      // File doesn't exist yet — first-time setup, show upload screen
+      _hideProgress();
+      return false;
+    }
+
+    _showProgress('Parsing data…', 60);
+    const data = JSON.parse(raw);
+    const rows = Array.isArray(data) ? data : (data.rows || []);
+    if (!rows.length) { _hideProgress(); return false; }
+
+    _rows = rows;
+    _showProgress('Rendering app…', 85);
+    await new Promise(r => setTimeout(r, 120));
+    _launchApp({ fileName: 'Google Drive · tasks.json', sheetFound: true });
+    return true;
+  } catch(e) {
+    _hideProgress();
+    console.warn('[TTIS] Drive load failed:', e.message);
+    return false;
+  }
+}
+
+// Wait for Google Identity Services script to finish loading
+function _waitForGis(ms) {
+  return new Promise(resolve => {
+    if (typeof google !== 'undefined' && google?.accounts?.oauth2) { resolve(true); return; }
+    const start    = Date.now();
+    const interval = setInterval(() => {
+      if (typeof google !== 'undefined' && google?.accounts?.oauth2) {
+        clearInterval(interval); resolve(true);
+      } else if (Date.now() - start >= ms) {
+        clearInterval(interval); resolve(false);
+      }
+    }, 100);
+  });
+}
+
+// Read gdsync config from localStorage
+function _gdCfg(key) {
+  try { return JSON.parse(localStorage.getItem('TTIS_CONFIG') || '{}').gdsync?.[key] || ''; }
+  catch(e) { return ''; }
 }
 
 // ── Toast ──────────────────────────────────────────────────

@@ -53,8 +53,12 @@ const GoogleDriveStorage = (() => {
   function isReady()      { return !!_clientId && _gisReady() && !!_tokenClient; }
   function isAuthorized() { return !!_token; }
 
-  // ── OAuth2 authorize (opens Google popup) ─────────────
-  function authorize() {
+  // ── OAuth2 authorize ───────────────────────────────────
+  // options.prompt:
+  //   ''               → silent: GIS issues a token with no UI if browser session
+  //                       already has consent; rejects silently if it cannot
+  //   'select_account' → shows Google account picker (default for explicit auth)
+  function authorize(options = {}) {
     return new Promise((resolve, reject) => {
       if (!_clientId) return reject(new Error('Client ID is not set'));
       if (!_gisReady()) return reject(new Error('Google Identity Services is not yet loaded — please wait a moment and try again'));
@@ -70,8 +74,9 @@ const GoogleDriveStorage = (() => {
         }
       };
 
-      // prompt:'' = silent refresh if already consented; 'consent' forces dialog
-      _tokenClient.requestAccessToken({ prompt: _token ? '' : 'consent' });
+      const prompt = options.prompt !== undefined ? options.prompt
+                   : (_token ? '' : 'select_account');
+      _tokenClient.requestAccessToken({ prompt });
     });
   }
 
