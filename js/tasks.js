@@ -16,33 +16,29 @@ const Tasks = (() => {
   let _editState   = null;
   let _conflictState = null;
 
-  // Read-only info fields (shown in modal but not editable)
-  const READONLY_FIELDS = [
-    { key: 'id',               label: 'ID#' },
-    { key: 'job_code',         label: 'Job Code' },
-    { key: 'logical_site_id',  label: 'Logical Site ID' },
-    { key: 'physical_site_id', label: 'Physical Site ID' },
-    { key: 'site_option',      label: 'Site Option' },
-    { key: 'facing',           label: 'Facing' },
-    { key: 'region',           label: 'Region' },
-    { key: 'sub_region',       label: 'Sub Region' },
-    { key: 'vendor',           label: 'Vendor' },
-    { key: 'tx_rf',            label: 'TX/RF' },
-    { key: 'stream',           label: 'General Stream' },
-    { key: 'task_name',        label: 'Task Name' },
-    { key: 'contractor',       label: 'Contractor' },
-    { key: 'engineer',         label: "Engineer's Name" },
-    { key: 'line_item',        label: 'Line Item' },
-    { key: 'abs_qty',          label: 'Absolute Quantity' },
-    { key: 'distance',         label: 'Distance (km)' },
-    { key: 'comments',         label: 'Comments' },
-  ];
-
-  // Editable tracking fields
+  // All fields — every field is editable
   const EDITABLE_FIELDS = [
+    { key: 'id',                 label: 'ID#',                  type: 'text' },
+    { key: 'job_code',           label: 'Job Code',             type: 'text' },
+    { key: 'logical_site_id',    label: 'Logical Site ID',      type: 'text' },
+    { key: 'physical_site_id',   label: 'Physical Site ID',     type: 'text' },
+    { key: 'site_option',        label: 'Site Option',          type: 'text' },
+    { key: 'facing',             label: 'Facing',               type: 'text' },
+    { key: 'region',             label: 'Region',               type: 'text' },
+    { key: 'sub_region',         label: 'Sub Region',           type: 'text' },
+    { key: 'vendor',             label: 'Vendor',               type: 'text' },
+    { key: 'tx_rf',              label: 'TX/RF',                type: 'text' },
+    { key: 'stream',             label: 'General Stream',       type: 'text' },
+    { key: 'task_name',          label: 'Task Name',            type: 'text' },
+    { key: 'contractor',         label: 'Contractor',           type: 'text' },
+    { key: 'engineer',           label: "Engineer's Name",      type: 'text' },
+    { key: 'line_item',          label: 'Line Item',            type: 'text' },
+    { key: 'abs_qty',            label: 'Absolute Quantity',    type: 'text' },
     { key: 'act_qty',            label: 'Actual Quantity',      type: 'text' },
+    { key: 'distance',           label: 'Distance (km)',        type: 'text' },
     { key: 'new_price',          label: 'New Price',            type: 'text' },
     { key: 'total_price',        label: 'New Total Price',      type: 'text' },
+    { key: 'comments',           label: 'Comments',             type: 'text' },
     { key: 'status',             label: 'Status',               type: 'select',
       options: ['', 'Done', 'In Progress', 'Cancelled', 'Assigned'] },
     { key: 'task_date',          label: 'Task Date',            type: 'text', placeholder: 'DD/MM/YYYY' },
@@ -494,17 +490,7 @@ const Tasks = (() => {
   function _showEditModal(row) {
     document.getElementById('taskEditOverlay')?.remove();
 
-    // Read-only section
-    const roFields = READONLY_FIELDS.map(f => {
-      const val = row[f.key] != null ? String(row[f.key]) : '—';
-      return `<div class="te-group">
-        <label class="te-label te-label-ro">${_esc(f.label)}</label>
-        <div class="te-readonly">${_esc(val)}</div>
-      </div>`;
-    }).join('');
-
-    // Editable section
-    const editFields = EDITABLE_FIELDS.map(f => {
+    const fields = EDITABLE_FIELDS.map(f => {
       const val = row[f.key] != null ? String(row[f.key]) : '';
       if (f.type === 'select') {
         const opts = f.options.map(o =>
@@ -535,10 +521,7 @@ const Tasks = (() => {
           <button class="task-edit-close" onclick="Tasks.cancelEdit()">&#10005;</button>
         </div>
         <div class="task-edit-body">
-          <div class="te-section-title">Site &amp; Task Information</div>
-          <div class="te-grid">${roFields}</div>
-          <div class="te-section-title te-section-editable">Tracking Fields</div>
-          <div class="te-grid">${editFields}</div>
+          <div class="te-grid">${fields}</div>
         </div>
         <div class="task-edit-footer">
           <button class="te-btn te-btn-cancel" onclick="Tasks.cancelEdit()">Cancel</button>
