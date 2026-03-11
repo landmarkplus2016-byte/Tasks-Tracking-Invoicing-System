@@ -79,20 +79,29 @@ const Tasks = (() => {
         <input id="tSearch" type="text"
                placeholder="Search by Site ID, Job Code, Coordinator, Contractor…"
                oninput="Tasks.applyFilters()">
+        <select id="tContractor" onchange="Tasks.applyFilters()">
+          <option value="">All Contractors</option>
+        </select>
         <select id="tStatus" onchange="Tasks.applyFilters()">
           <option value="">All Statuses</option>
+        </select>
+        <select id="tDateYear" onchange="Tasks._onDateYearChange()">
+          <option value="">All Years</option>
+        </select>
+        <select id="tDateMonth" onchange="Tasks._onDateMonthChange()" disabled>
+          <option value="">All Months</option>
+        </select>
+        <select id="tDateDay" onchange="Tasks.applyFilters()" disabled>
+          <option value="">All Days</option>
+        </select>
+        <select id="tCoordinator" onchange="Tasks.applyFilters()">
+          <option value="">All Coordinators</option>
         </select>
         <select id="tAcceptance" onchange="Tasks.applyFilters()">
           <option value="">All Acceptance</option>
         </select>
-        <select id="tRegion" onchange="Tasks.applyFilters()">
-          <option value="">All Regions</option>
-        </select>
-        <select id="tVendor" onchange="Tasks.applyFilters()">
-          <option value="">All Vendors</option>
-        </select>
-        <select id="tStream" onchange="Tasks.applyFilters()">
-          <option value="">All Streams</option>
+        <select id="tPoStatus" onchange="Tasks.applyFilters()">
+          <option value="">All PO Statuses</option>
         </select>
         <span class="filter-count" id="tCount">— rows</span>
         <button class="clear-btn" onclick="Tasks.clearFilters()">✕ Clear</button>
@@ -143,11 +152,16 @@ const Tasks = (() => {
 
   // ── Populate filter dropdowns ─────────────────────────
   function _populateSelects() {
-    _fillSelect('tStatus',     _unique(_allRows, 'status'));
-    _fillSelect('tAcceptance', _unique(_allRows, 'acceptance_status'));
-    _fillSelect('tRegion',     _unique(_allRows, 'region'));
-    _fillSelect('tVendor',     _unique(_allRows, 'vendor'));
-    _fillSelect('tStream',     _unique(_allRows, 'stream'));
+    _fillSelect('tContractor',  _unique(_allRows, 'contractor'));
+    _fillSelect('tStatus',      _unique(_allRows, 'status'));
+    _fillSelect('tCoordinator', _unique(_allRows, 'coordinator'));
+    _fillSelect('tAcceptance',  _unique(_allRows, 'acceptance_status'));
+    _fillSelect('tPoStatus',    _unique(_allRows, 'po_status'));
+    // Populate year dropdown from task_date (DD/MM/YYYY)
+    const years = [...new Set(
+      _allRows.map(r => _parseDatePart(r.task_date, 'year')).filter(Boolean)
+    )].sort();
+    _fillSelect('tDateYear', years);
   }
 
   function _unique(rows, field) {
@@ -159,24 +173,104 @@ const Tasks = (() => {
     if (!sel) return;
     const first = sel.options[0].outerHTML;
     sel.innerHTML = first + items.map(v =>
-      `<option value="${_esc(v)}">${_esc(v)}</option>`).join('');
+      `<option value="${_esc(String(v))}">${_esc(String(v))}</option>`).join('');
+  }
+
+  // Parse a DD/MM/YYYY date string for 'year', 'month', or 'day'
+  function _parseDatePart(dateStr, part) {
+    if (!dateStr) return null;
+    const s = String(dateStr).trim();
+    // Support DD/MM/YYYY and YYYY-MM-DD
+    let day, month, year;
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
+      [day, month, year] = s.split('/');
+    } else if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+      [year, month, day] = s.slice(0,10).split('-');
+    } else {
+      return null;
+    }
+    if (part === 'year')  return year;
+    if (part === 'month') return month.padStart(2,'0');
+    if (part === 'day')   return day.padStart(2,'0');
+    return null;
+  }
+
+  // Called when year dropdown changes — repopulate months
+  function _onDateYearChange() {
+    const year = document.getElementById('tDateYear')?.value || '';
+    const monthSel = document.getElementById('tDateMonth');
+    const daySel   = document.getElementById('tDateDay');
+    if (!monthSel || !daySel) return;
+
+    monthSel.innerHTML = '<option value="">All Months</option>';
+    daySel.innerHTML   = '<option value="">All Days</option>';
+    daySel.disabled    = true;
+
+    if (!year) {
+      monthSel.disabled = true;
+    } else {
+      const months = [...new Set(
+        _allRows
+          .filter(r => _parseDatePart(r.task_date, 'year') === year)
+          .map(r => _parseDatePart(r.task_date, 'month'))
+          .filter(Boolean)
+      )].sort();
+      const MONTH_NAMES = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      monthSel.innerHTML = '<option value="">All Months</option>' +
+        months.map(m => `<option value="${m}">${MONTH_NAMES[parseInt(m,10)] || m}</option>`).join('');
+      monthSel.disabled = false;
+    }
+    applyFilters();
+  }
+
+  // Called when month dropdown changes — repopulate days
+  function _onDateMonthChange() {
+    const year  = document.getElementById('tDateYear')?.value  || '';
+    const month = document.getElementById('tDateMonth')?.value || '';
+    const daySel = document.getElementById('tDateDay');
+    if (!daySel) return;
+
+    daySel.innerHTML = '<option value="">All Days</option>';
+    if (!year || !month) {
+      daySel.disabled = true;
+    } else {
+      const days = [...new Set(
+        _allRows
+          .filter(r =>
+            _parseDatePart(r.task_date, 'year')  === year &&
+            _parseDatePart(r.task_date, 'month') === month
+          )
+          .map(r => _parseDatePart(r.task_date, 'day'))
+          .filter(Boolean)
+      )].sort();
+      daySel.innerHTML = '<option value="">All Days</option>' +
+        days.map(d => `<option value="${d}">${d}</option>`).join('');
+      daySel.disabled = days.length === 0;
+    }
+    applyFilters();
   }
 
   // ── Filter logic ──────────────────────────────────────
   function applyFilters() {
-    const q   = (document.getElementById('tSearch')?.value     || '').toLowerCase().trim();
-    const st  =  document.getElementById('tStatus')?.value     || '';
-    const ac  =  document.getElementById('tAcceptance')?.value || '';
-    const rg  =  document.getElementById('tRegion')?.value     || '';
-    const vn  =  document.getElementById('tVendor')?.value     || '';
-    const sm  =  document.getElementById('tStream')?.value     || '';
+    const q   = (document.getElementById('tSearch')?.value      || '').toLowerCase().trim();
+    const ct  =  document.getElementById('tContractor')?.value  || '';
+    const st  =  document.getElementById('tStatus')?.value      || '';
+    const yr  =  document.getElementById('tDateYear')?.value    || '';
+    const mo  =  document.getElementById('tDateMonth')?.value   || '';
+    const dy  =  document.getElementById('tDateDay')?.value     || '';
+    const co  =  document.getElementById('tCoordinator')?.value || '';
+    const ac  =  document.getElementById('tAcceptance')?.value  || '';
+    const po  =  document.getElementById('tPoStatus')?.value    || '';
 
     _filtered = _allRows.filter(r => {
-      if (st && r.status             !== st) return false;
-      if (ac && r.acceptance_status  !== ac) return false;
-      if (rg && r.region             !== rg) return false;
-      if (vn && r.vendor             !== vn) return false;
-      if (sm && r.stream             !== sm) return false;
+      if (ct && r.contractor        !== ct) return false;
+      if (st && r.status            !== st) return false;
+      if (co && r.coordinator       !== co) return false;
+      if (ac && r.acceptance_status !== ac) return false;
+      if (po && r.po_status         !== po) return false;
+      if (yr && _parseDatePart(r.task_date, 'year')  !== yr) return false;
+      if (mo && _parseDatePart(r.task_date, 'month') !== mo) return false;
+      if (dy && _parseDatePart(r.task_date, 'day')   !== dy) return false;
       if (q) {
         const hay = [
           r.id, r.job_code, r.logical_site_id, r.physical_site_id,
@@ -194,8 +288,15 @@ const Tasks = (() => {
   }
 
   function clearFilters() {
-    ['tSearch','tStatus','tAcceptance','tRegion','tVendor','tStream']
+    ['tSearch','tContractor','tStatus','tCoordinator','tAcceptance','tPoStatus']
       .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    // Reset cascading date selects
+    const yearSel  = document.getElementById('tDateYear');
+    const monthSel = document.getElementById('tDateMonth');
+    const daySel   = document.getElementById('tDateDay');
+    if (yearSel)  yearSel.value  = '';
+    if (monthSel) { monthSel.innerHTML = '<option value="">All Months</option>'; monthSel.disabled = true; }
+    if (daySel)   { daySel.innerHTML   = '<option value="">All Days</option>';   daySel.disabled   = true; }
     applyFilters();
   }
 
@@ -650,7 +751,7 @@ const Tasks = (() => {
   }
 
   // ── Expose ────────────────────────────────────────────
-  return { init, applyFilters, clearFilters, sortBy, openEdit, cancelEdit, saveEdit, breakLock, resolveConflict };
+  return { init, applyFilters, clearFilters, sortBy, openEdit, cancelEdit, saveEdit, breakLock, resolveConflict, _onDateYearChange, _onDateMonthChange };
 })();
 
 // ── Shared helpers ────────────────────────────────────────

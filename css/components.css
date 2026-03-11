@@ -162,6 +162,10 @@
 .filter-bar input:focus,
 .filter-bar select:focus { border-color: var(--cyan2); }
 .filter-bar select option { background: var(--bg3); }
+#tDateYear  { min-width: 90px; }
+#tDateMonth { min-width: 100px; }
+#tDateDay   { min-width: 78px; }
+.filter-bar select:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .filter-count {
   font-size: 11px;
