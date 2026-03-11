@@ -160,10 +160,13 @@ const Tasks = (() => {
     _fillSelect('tCoordinator', _unique(_allRows, 'coordinator'));
     _fillSelect('tAcceptance',  _unique(_allRows, 'acceptance_status'));
     _fillSelect('tPoStatus',    _unique(_allRows, 'po_status'));
-    // Populate year dropdown from task_date (DD/MM/YYYY)
+    // Populate year dropdown from task_date
+    const sampleDate = _allRows.find(r => r.task_date)?.task_date;
+    if (sampleDate) console.log('[TTIS] sample task_date value:', JSON.stringify(sampleDate));
     const years = [...new Set(
       _allRows.map(r => _parseDatePart(r.task_date, 'year')).filter(Boolean)
     )].sort();
+    console.log('[TTIS] parsed years:', years);
     _fillSelect('tDateYear', years);
   }
 
@@ -179,22 +182,48 @@ const Tasks = (() => {
       `<option value="${_esc(String(v))}">${_esc(String(v))}</option>`).join('');
   }
 
-  // Parse a DD/MM/YYYY date string for 'year', 'month', or 'day'
+  // Parse a date string (any common format) and return 'year', 'month', or 'day'
   function _parseDatePart(dateStr, part) {
     if (!dateStr) return null;
     const s = String(dateStr).trim();
-    // Support DD/MM/YYYY and YYYY-MM-DD
-    let day, month, year;
-    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
-      [day, month, year] = s.split('/');
-    } else if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
-      [year, month, day] = s.slice(0,10).split('-');
-    } else {
-      return null;
+    let year, month, day;
+
+    // DD/MM/YYYY or D/M/YYYY (possibly with time: "15/01/2024 00:00:00")
+    let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m) { day = m[1]; month = m[2]; year = m[3]; }
+
+    // YYYY-MM-DD (ISO, possibly with time)
+    if (!year) {
+      m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) { year = m[1]; month = m[2]; day = m[3]; }
     }
-    if (part === 'year')  return year;
-    if (part === 'month') return month.padStart(2,'0');
-    if (part === 'day')   return day.padStart(2,'0');
+
+    // DD-MM-YYYY
+    if (!year) {
+      m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})/);
+      if (m) { day = m[1]; month = m[2]; year = m[3]; }
+    }
+
+    // YYYY/MM/DD
+    if (!year) {
+      m = s.match(/^(\d{4})\/(\d{2})\/(\d{2})/);
+      if (m) { year = m[1]; month = m[2]; day = m[3]; }
+    }
+
+    // Last resort: JavaScript Date constructor (handles "Jan 15, 2024", ISO strings, etc.)
+    if (!year) {
+      const d = new Date(s);
+      if (!isNaN(d.getTime())) {
+        year  = String(d.getFullYear());
+        month = String(d.getMonth() + 1).padStart(2, '0');
+        day   = String(d.getDate()).padStart(2, '0');
+      }
+    }
+
+    if (!year) return null;
+    if (part === 'year')  return String(year);
+    if (part === 'month') return String(month).padStart(2, '0');
+    if (part === 'day')   return String(day).padStart(2, '0');
     return null;
   }
 
