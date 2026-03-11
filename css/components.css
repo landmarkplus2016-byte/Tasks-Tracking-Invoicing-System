@@ -217,6 +217,22 @@
 }
 .clear-btn:hover { background: var(--bg3); color: var(--text); border-color: var(--border2); }
 
+.bulk-edit-btn {
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--cyan2);
+  background: transparent;
+  color: var(--cyan2);
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+  transition: all .15s;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 600;
+  letter-spacing: .5px;
+}
+.bulk-edit-btn:hover { background: var(--cyan2); color: #fff; }
+
 /* ══ Table ════════════════════════════════════════════════ */
 .table-wrap {
   background: var(--bg2);

@@ -108,6 +108,7 @@ const Tasks = (() => {
         </select>
         <span class="filter-count" id="tCount">— rows</span>
         <button class="clear-btn" onclick="Tasks.clearFilters()">✕ Clear</button>
+        <button class="bulk-edit-btn" onclick="Tasks.openBulkEdit()" title="Apply one field change to all rows of a site">⊞ Bulk Edit Site</button>
       </div>
 
       <div class="table-wrap">
@@ -161,12 +162,9 @@ const Tasks = (() => {
     _fillSelect('tAcceptance',  _unique(_allRows, 'acceptance_status'));
     _fillSelect('tPoStatus',    _unique(_allRows, 'po_status'));
     // Populate year dropdown from task_date
-    const sampleDate = _allRows.find(r => r.task_date)?.task_date;
-    if (sampleDate) console.log('[TTIS] sample task_date value:', JSON.stringify(sampleDate));
     const years = [...new Set(
       _allRows.map(r => _parseDatePart(r.task_date, 'year')).filter(Boolean)
     )].sort();
-    console.log('[TTIS] parsed years:', years);
     _fillSelect('tDateYear', years);
   }
 
@@ -782,8 +780,178 @@ const Tasks = (() => {
     return snap;
   }
 
+  // ── Bulk Edit ─────────────────────────────────────────
+  // Fields available for bulk editing (fields that make sense to apply across all line items of a site)
+  const BULK_FIELDS = [
+    { key: 'status',           label: 'Status',            type: 'select', options: ['', 'Done', 'In Progress', 'Cancelled', 'Assigned'] },
+    { key: 'task_date',        label: 'Task Date',         type: 'text',   placeholder: 'DD/MM/YYYY' },
+    { key: 'vf_owner',         label: 'VF Task Owner',     type: 'text' },
+    { key: 'coordinator',      label: 'Coordinator',       type: 'text' },
+    { key: 'acceptance_status',label: 'Acceptance Status', type: 'select', options: ['', 'FAC', 'TOC', 'PAC'] },
+    { key: 'fac_date',         label: 'FAC Date',          type: 'text',   placeholder: 'DD/MM/YYYY' },
+    { key: 'certificate',      label: 'Certificate #',     type: 'text' },
+    { key: 'acceptance_week',  label: 'Acceptance Week',   type: 'text' },
+    { key: 'tsr_sub',          label: 'TSR Sub#',          type: 'text' },
+    { key: 'po_status',        label: 'PO Status',         type: 'text' },
+    { key: 'po_number',        label: 'PO Number',         type: 'text' },
+    { key: 'vf_invoice',       label: 'VF Invoice #',      type: 'text' },
+    { key: 'recv1_date',       label: '1st Receiving Date',type: 'text',   placeholder: 'DD/MM/YYYY' },
+    { key: 'recv1_amount',     label: '1st Receiving Amount', type: 'text' },
+    { key: 'recv2_date',       label: '2nd Receiving Date',type: 'text',   placeholder: 'DD/MM/YYYY' },
+    { key: 'recv2_amount',     label: '2nd Receiving Amount', type: 'text' },
+    { key: 'comments',         label: 'Comments',          type: 'text' },
+  ];
+
+  function openBulkEdit() {
+    // Build unique sorted site list
+    const sites = [...new Set(_allRows.map(r => r.logical_site_id).filter(Boolean))].sort();
+
+    const fieldOptions = BULK_FIELDS.map(f =>
+      `<option value="${_esc(f.key)}">${_esc(f.label)}</option>`).join('');
+
+    const siteOptions = sites.map(s =>
+      `<option value="${_esc(s)}">${_esc(s)}</option>`).join('');
+
+    const overlay = document.createElement('div');
+    overlay.id = 'bulkEditOverlay';
+    overlay.className = 'te-overlay';
+    overlay.innerHTML = `
+      <div class="te-modal" style="max-width:480px">
+        <div class="te-header">
+          <span class="te-title">Bulk Edit — Apply to All Site Rows</span>
+          <button class="te-close" onclick="Tasks.closeBulkEdit()">✕</button>
+        </div>
+        <div class="te-body" style="padding:20px 24px;display:flex;flex-direction:column;gap:16px">
+
+          <div class="te-field-group">
+            <label class="te-label">Site ID</label>
+            <select id="beSite" class="te-input" onchange="Tasks._onBulkSiteChange()">
+              <option value="">— Select a site —</option>
+              ${siteOptions}
+            </select>
+            <div id="beSiteInfo" style="font-size:12px;color:var(--text2);margin-top:4px"></div>
+          </div>
+
+          <div class="te-field-group">
+            <label class="te-label">Field to Change</label>
+            <select id="beField" class="te-input" onchange="Tasks._onBulkFieldChange()">
+              <option value="">— Select a field —</option>
+              ${fieldOptions}
+            </select>
+          </div>
+
+          <div id="beValueWrap" class="te-field-group" style="display:none">
+            <label class="te-label" id="beValueLabel">New Value</label>
+            <div id="beValueInput"></div>
+          </div>
+
+          <div id="bePreview" style="display:none;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text2)"></div>
+
+        </div>
+        <div class="te-footer">
+          <button class="te-btn-secondary" onclick="Tasks.closeBulkEdit()">Cancel</button>
+          <button class="te-btn-primary" id="beApplyBtn" onclick="Tasks._applyBulkEdit()" disabled>Apply to All Rows</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+  }
+
+  function _onBulkSiteChange() {
+    const siteId = document.getElementById('besite')?.value || document.getElementById('beSite')?.value || '';
+    const infoEl = document.getElementById('beSiteInfo');
+    if (!siteId) { if (infoEl) infoEl.textContent = ''; _updateBulkApplyBtn(); return; }
+    const count = _allRows.filter(r => r.logical_site_id === siteId).length;
+    if (infoEl) infoEl.textContent = `${count} row${count !== 1 ? 's' : ''} will be affected`;
+    _updateBulkApplyBtn();
+    _updateBulkPreview();
+  }
+
+  function _onBulkFieldChange() {
+    const fieldKey = document.getElementById('beField')?.value || '';
+    const wrapEl   = document.getElementById('beValueWrap');
+    const labelEl  = document.getElementById('beValueLabel');
+    const inputEl  = document.getElementById('beValueInput');
+    if (!wrapEl || !inputEl) return;
+
+    if (!fieldKey) { wrapEl.style.display = 'none'; _updateBulkApplyBtn(); return; }
+
+    const fd = BULK_FIELDS.find(f => f.key === fieldKey);
+    if (!fd) return;
+
+    if (labelEl) labelEl.textContent = fd.label;
+
+    if (fd.type === 'select') {
+      inputEl.innerHTML = `<select id="beValue" class="te-input" onchange="Tasks._updateBulkPreview(); Tasks._updateBulkApplyBtn()">
+        ${fd.options.map(o => `<option value="${_esc(o)}">${o || '(clear)'}</option>`).join('')}
+      </select>`;
+    } else {
+      inputEl.innerHTML = `<input id="beValue" class="te-input" type="text"
+        placeholder="${_esc(fd.placeholder || '')}"
+        oninput="Tasks._updateBulkPreview(); Tasks._updateBulkApplyBtn()">`;
+    }
+    wrapEl.style.display = '';
+    _updateBulkApplyBtn();
+    _updateBulkPreview();
+  }
+
+  function _updateBulkPreview() {
+    const siteId   = document.getElementById('beSite')?.value  || '';
+    const fieldKey = document.getElementById('beField')?.value || '';
+    const valueEl  = document.getElementById('beValue');
+    const previewEl= document.getElementById('bePreview');
+    if (!previewEl) return;
+    if (!siteId || !fieldKey || !valueEl) { previewEl.style.display = 'none'; return; }
+
+    const fd    = BULK_FIELDS.find(f => f.key === fieldKey);
+    const value = valueEl.value;
+    const rows  = _allRows.filter(r => r.logical_site_id === siteId);
+    previewEl.style.display = '';
+    previewEl.innerHTML = `Will set <strong>${_esc(fd?.label || fieldKey)}</strong> =
+      "<strong>${_esc(value || '(empty)')}</strong>"
+      on <strong>${rows.length}</strong> row${rows.length !== 1 ? 's' : ''} for site <strong>${_esc(siteId)}</strong>`;
+  }
+
+  function _updateBulkApplyBtn() {
+    const btn      = document.getElementById('beApplyBtn');
+    const siteId   = document.getElementById('beSite')?.value  || '';
+    const fieldKey = document.getElementById('beField')?.value || '';
+    const valueEl  = document.getElementById('beValue');
+    if (btn) btn.disabled = !(siteId && fieldKey && valueEl);
+  }
+
+  function _applyBulkEdit() {
+    const siteId   = document.getElementById('beSite')?.value  || '';
+    const fieldKey = document.getElementById('beField')?.value || '';
+    const valueEl  = document.getElementById('beValue');
+    if (!siteId || !fieldKey || !valueEl) return;
+
+    const value = valueEl.value;
+    const affected = _allRows.filter(r => r.logical_site_id === siteId);
+    if (!affected.length) { showToast('No rows found for this site', 'warn'); return; }
+
+    affected.forEach(row => {
+      if (typeof UserManager !== 'undefined') UserManager.stampUpdated(row);
+      row[fieldKey] = value;
+    });
+
+    closeBulkEdit();
+    buildDashboard(_allRows);
+    _render();
+    showToast(`Updated "${BULK_FIELDS.find(f=>f.key===fieldKey)?.label || fieldKey}" on ${affected.length} rows for site ${siteId}`, 'success');
+
+    _saveRowsToDrive().then(() => {
+      if (typeof SyncManager !== 'undefined') SyncManager.markSynced();
+    }).catch(e => {
+      showToast('Save failed: ' + e.message + ' — changes kept locally only', 'error');
+    });
+  }
+
+  function closeBulkEdit() {
+    document.getElementById('bulkEditOverlay')?.remove();
+  }
+
   // ── Expose ────────────────────────────────────────────
-  return { init, applyFilters, clearFilters, sortBy, openEdit, cancelEdit, saveEdit, breakLock, resolveConflict, _onDateYearChange, _onDateMonthChange };
+  return { init, applyFilters, clearFilters, sortBy, openEdit, cancelEdit, saveEdit, breakLock, resolveConflict, _onDateYearChange, _onDateMonthChange, openBulkEdit, closeBulkEdit, _onBulkSiteChange, _onBulkFieldChange, _updateBulkPreview, _updateBulkApplyBtn, _applyBulkEdit };
 })();
 
 // ── Shared helpers ────────────────────────────────────────
