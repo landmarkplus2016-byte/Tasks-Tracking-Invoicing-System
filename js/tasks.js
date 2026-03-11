@@ -13,21 +13,59 @@ const Tasks = (() => {
   const PAGE_SZ    = 100;
 
   // ── Edit state ────────────────────────────────────────
-  let _editState   = null;   // { row, rowId, baseline, edits }
-  let _conflictState = null; // { rowId, baseline, remote, mine }
+  let _editState   = null;
+  let _conflictState = null;
 
-  // Fields users can edit in the edit modal
+  // Read-only info fields (shown in modal but not editable)
+  const READONLY_FIELDS = [
+    { key: 'id',               label: 'ID#' },
+    { key: 'job_code',         label: 'Job Code' },
+    { key: 'logical_site_id',  label: 'Logical Site ID' },
+    { key: 'physical_site_id', label: 'Physical Site ID' },
+    { key: 'site_option',      label: 'Site Option' },
+    { key: 'facing',           label: 'Facing' },
+    { key: 'region',           label: 'Region' },
+    { key: 'sub_region',       label: 'Sub Region' },
+    { key: 'vendor',           label: 'Vendor' },
+    { key: 'tx_rf',            label: 'TX/RF' },
+    { key: 'stream',           label: 'General Stream' },
+    { key: 'task_name',        label: 'Task Name' },
+    { key: 'contractor',       label: 'Contractor' },
+    { key: 'engineer',         label: "Engineer's Name" },
+    { key: 'line_item',        label: 'Line Item' },
+    { key: 'abs_qty',          label: 'Absolute Quantity' },
+    { key: 'distance',         label: 'Distance (km)' },
+    { key: 'comments',         label: 'Comments' },
+  ];
+
+  // Editable tracking fields
   const EDITABLE_FIELDS = [
-    { key: 'status',            label: 'Status',       type: 'select',
+    { key: 'act_qty',            label: 'Actual Quantity',      type: 'text' },
+    { key: 'new_price',          label: 'New Price',            type: 'text' },
+    { key: 'total_price',        label: 'New Total Price',      type: 'text' },
+    { key: 'status',             label: 'Status',               type: 'select',
       options: ['', 'Done', 'In Progress', 'Cancelled', 'Assigned'] },
-    { key: 'task_date',         label: 'Task Date',    type: 'text', placeholder: 'DD/MM/YYYY' },
-    { key: 'acceptance_status', label: 'Acceptance',   type: 'select',
+    { key: 'task_date',          label: 'Task Date',            type: 'text', placeholder: 'DD/MM/YYYY' },
+    { key: 'vf_owner',           label: 'VF Task Owner',        type: 'text' },
+    { key: 'coordinator',        label: 'Coordinator',          type: 'text' },
+    { key: 'acceptance_status',  label: 'Acceptance Status',    type: 'select',
       options: ['', 'FAC', 'TOC', 'PAC'] },
-    { key: 'fac_date',          label: 'FAC Date',     type: 'text', placeholder: 'DD/MM/YYYY' },
-    { key: 'tsr_sub',           label: 'TSR Sub#',     type: 'text' },
-    { key: 'po_status',         label: 'PO Status',    type: 'text' },
-    { key: 'coordinator',       label: 'Coordinator',  type: 'text' },
-    { key: 'vf_owner',          label: 'VF Owner',     type: 'text' },
+    { key: 'fac_date',           label: 'FAC Date',             type: 'text', placeholder: 'DD/MM/YYYY' },
+    { key: 'certificate',        label: 'Certificate #',        type: 'text' },
+    { key: 'acceptance_week',    label: 'Acceptance Week',      type: 'text' },
+    { key: 'tsr_sub',            label: 'TSR Sub#',             type: 'text' },
+    { key: 'po_status',          label: 'PO Status',            type: 'text' },
+    { key: 'po_number',          label: 'PO Number',            type: 'text' },
+    { key: 'vf_invoice',         label: 'VF Invoice #',         type: 'text' },
+    { key: 'recv1_date',         label: '1st Receiving Date',   type: 'text', placeholder: 'DD/MM/YYYY' },
+    { key: 'recv1_amount',       label: '1st Receiving Amount', type: 'text' },
+    { key: 'recv1_qty',          label: '1st Receiving Qty',    type: 'text' },
+    { key: 'recv2_date',         label: '2nd Receiving Date',   type: 'text', placeholder: 'DD/MM/YYYY' },
+    { key: 'recv2_amount',       label: '2nd Receiving Amount', type: 'text' },
+    { key: 'recv2_qty',          label: '2nd Receiving Qty',    type: 'text' },
+    { key: 'remaining',          label: 'Remaining Amounts',    type: 'text' },
+    { key: 'lmp_portion',        label: 'LMP Portion',          type: 'text' },
+    { key: 'contractor_portion', label: 'Contractor Portion',   type: 'text' },
   ];
 
   // ── Public API ───────────────────────────────────────
@@ -72,27 +110,28 @@ const Tasks = (() => {
                 <th onclick="Tasks.sortBy('id')">ID</th>
                 <th onclick="Tasks.sortBy('job_code')">Job Code</th>
                 <th onclick="Tasks.sortBy('logical_site_id')">Logical Site ID</th>
-                <th onclick="Tasks.sortBy('physical_site_id')">Physical Site ID</th>
+                <th onclick="Tasks.sortBy('site_option')">Site Option</th>
+                <th onclick="Tasks.sortBy('facing')">Facing</th>
                 <th onclick="Tasks.sortBy('region')">Region</th>
-                <th onclick="Tasks.sortBy('sub_region')">Sub Region</th>
-                <th onclick="Tasks.sortBy('vendor')">Vendor</th>
-                <th onclick="Tasks.sortBy('tx_rf')">TX/RF</th>
-                <th onclick="Tasks.sortBy('stream')">Stream</th>
-                <th onclick="Tasks.sortBy('task_name')">Task Name</th>
-                <th onclick="Tasks.sortBy('contractor')">Contractor</th>
-                <th onclick="Tasks.sortBy('engineer')">Engineer</th>
-                <th onclick="Tasks.sortBy('line_item')">Line Item</th>
+                <th onclick="Tasks.sortBy('abs_qty')">Abs. Qty</th>
                 <th onclick="Tasks.sortBy('act_qty')">Act. Qty</th>
-                <th onclick="Tasks.sortBy('total_price')">Total Price</th>
+                <th onclick="Tasks.sortBy('contractor')">Contractor</th>
+                <th onclick="Tasks.sortBy('line_item')">Line Item</th>
+                <th onclick="Tasks.sortBy('new_price')">New Price</th>
+                <th onclick="Tasks.sortBy('total_price')">New Total Price</th>
                 <th onclick="Tasks.sortBy('status')">Status</th>
                 <th onclick="Tasks.sortBy('task_date')">Task Date</th>
+                <th onclick="Tasks.sortBy('vf_owner')">VF Owner</th>
+                <th onclick="Tasks.sortBy('coordinator')">Coordinator</th>
                 <th onclick="Tasks.sortBy('acceptance_status')">Acceptance</th>
                 <th onclick="Tasks.sortBy('fac_date')">FAC Date</th>
+                <th onclick="Tasks.sortBy('certificate')">Certificate #</th>
+                <th onclick="Tasks.sortBy('acceptance_week')">Acc. Week</th>
                 <th onclick="Tasks.sortBy('tsr_sub')">TSR Sub#</th>
                 <th onclick="Tasks.sortBy('po_status')">PO Status</th>
-                <th onclick="Tasks.sortBy('coordinator')">Coordinator</th>
-                <th onclick="Tasks.sortBy('vf_owner')">VF Owner</th>
-                <th>Price</th>
+                <th onclick="Tasks.sortBy('po_number')">PO Number</th>
+                <th onclick="Tasks.sortBy('vf_invoice')">VF Invoice #</th>
+                <th onclick="Tasks.sortBy('recv1_date')">1st Recv Date</th>
                 <th class="col-action"></th>
               </tr>
             </thead>
@@ -183,6 +222,28 @@ const Tasks = (() => {
     });
   }
 
+  // ── Row attributes: class + title + double-click ──────
+  function _rowAttrs(r) {
+    const classes = [];
+    const titles  = [];
+
+    if (r.created_by) titles.push(`Created by ${r.created_by}${r.created_at ? ' · ' + new Date(r.created_at).toLocaleString() : ''}`);
+    if (r.updated_by) titles.push(`Updated by ${r.updated_by}${r.updated_at ? ' · ' + new Date(r.updated_at).toLocaleString() : ''}`);
+    if (titles.length) classes.push('row-audited');
+
+    if (r.id && typeof LockManager !== 'undefined') {
+      if (LockManager.isImportLocked())                classes.push('row-import-locked');
+      else if (LockManager.isLockedByMe(String(r.id))) classes.push('row-locked-mine');
+      else if (LockManager.isLocked(String(r.id)))     classes.push('row-locked-other');
+    }
+
+    let attrs = ' style="cursor:pointer"';
+    if (classes.length) attrs += ` class="${classes.join(' ')}"`;
+    if (titles.length)  attrs += ` title="${_esc(titles.join('\n'))}"`;
+    if (r.id)           attrs += ` ondblclick="Tasks.openEdit('${_esc(String(r.id))}')"`;
+    return attrs;
+  }
+
   // ── Render table ──────────────────────────────────────
   function _render() {
     const total  = _filtered.length;
@@ -197,35 +258,36 @@ const Tasks = (() => {
     if (!tbody) return;
 
     if (slice.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="25" class="empty-state">
+      tbody.innerHTML = `<tr><td colspan="26" class="empty-state">
         <div class="empty-state-text">No matching records</div></td></tr>`;
     } else {
       tbody.innerHTML = slice.map(r => `
-        <tr${_auditTitle(r)}${_rowLockClass(r)}>
+        <tr${_rowAttrs(r)}>
           <td>${_esc(r.id || '')}</td>
           <td>${_esc(r.job_code || '')}</td>
           <td>${_esc(r.logical_site_id || '')}</td>
-          <td>${_esc(r.physical_site_id || '')}</td>
+          <td>${_esc(r.site_option || '—')}</td>
+          <td>${_esc(r.facing || '—')}</td>
           <td>${_esc(r.region || '')}</td>
-          <td>${_esc(r.sub_region || '')}</td>
-          <td>${_esc(r.vendor || '')}</td>
-          <td>${_esc(r.tx_rf || '')}</td>
-          <td>${_esc(r.stream || '')}</td>
-          <td style="max-width:160px" title="${_esc(r.task_name || '')}">${_esc(r.task_name || '')}</td>
-          <td>${_esc(r.contractor || '')}</td>
-          <td>${_esc(r.engineer || '')}</td>
-          <td style="max-width:160px" title="${_esc(r.line_item || '')}">${_esc(r.line_item || '')}</td>
+          <td style="text-align:right">${r.abs_qty != null ? r.abs_qty : '—'}</td>
           <td style="text-align:right">${r.act_qty != null ? r.act_qty : '—'}</td>
+          <td>${_esc(r.contractor || '')}</td>
+          <td style="max-width:160px" title="${_esc(r.line_item || '')}">${_esc(r.line_item || '')}</td>
+          <td style="text-align:right">${r.new_price != null ? fmtEGP(r.new_price) : '—'}</td>
           <td style="text-align:right">${_totalPriceCell(r)}</td>
           <td>${_statusBadge(r.status, r.status_raw)}</td>
           <td>${_esc(r.task_date || '—')}</td>
+          <td>${_esc(r.vf_owner || '')}</td>
+          <td>${_esc(r.coordinator || '')}</td>
           <td>${_acceptBadge(r.acceptance_status)}</td>
           <td>${_esc(r.fac_date || '—')}</td>
+          <td>${_esc(r.certificate || '—')}</td>
+          <td>${_esc(r.acceptance_week || '—')}</td>
           <td>${_esc(r.tsr_sub || '—')}</td>
           <td>${_poBadge(r.po_status)}</td>
-          <td>${_esc(r.coordinator || '')}</td>
-          <td>${_esc(r.vf_owner || '')}</td>
-          <td>${_priceBadge(r)}</td>
+          <td>${_esc(r.po_number || '—')}</td>
+          <td>${_esc(r.vf_invoice || '—')}</td>
+          <td>${_esc(r.recv1_date || '—')}</td>
           <td class="col-action">${_rowAction(r)}</td>
         </tr>`).join('');
     }
@@ -237,32 +299,20 @@ const Tasks = (() => {
   }
 
   // ── Lock indicator helpers ────────────────────────────
-  function _rowLockClass(r) {
-    if (!r.id) return '';
-    if (typeof LockManager === 'undefined') return '';
-    if (LockManager.isImportLocked()) return ' class="row-import-locked"';
-    if (LockManager.isLockedByMe(String(r.id))) return ' class="row-locked-mine"';
-    if (LockManager.isLocked(String(r.id)))     return ' class="row-locked-other"';
-    return '';
-  }
-
   function _rowAction(r) {
     if (!r.id) return '';
     const id = _esc(String(r.id));
 
-    // Import in progress — no edits allowed
     if (typeof LockManager !== 'undefined' && LockManager.isImportLocked()) {
       const il = LockManager.getImportLock();
       const who = il?.lockedByName || 'someone';
       return `<span class="lock-icon lock-import" title="Import in progress by ${_esc(who)}">&#9889;</span>`;
     }
 
-    // Locked by me
     if (typeof LockManager !== 'undefined' && LockManager.isLockedByMe(String(r.id))) {
       return `<span class="lock-icon lock-mine" title="You are editing this row">&#9998;</span>`;
     }
 
-    // Locked by someone else
     if (typeof LockManager !== 'undefined' && LockManager.isLocked(String(r.id))) {
       const lock = LockManager.getLock(String(r.id));
       const who  = lock?.lockedByName || 'Unknown';
@@ -273,7 +323,6 @@ const Tasks = (() => {
         (isAdmin ? `<button class="row-break-btn" onclick="Tasks.breakLock('${id}')" title="Break lock (Admin)">&#128275;</button>` : '');
     }
 
-    // Free to edit
     return `<button class="row-edit-btn" onclick="Tasks.openEdit('${id}')" title="Edit row">&#9998;</button>`;
   }
 
@@ -306,7 +355,7 @@ const Tasks = (() => {
       baseline: _snapshotRow(row)
     };
     _showEditModal(row);
-    _render();   // refresh lock icons
+    _render();
   }
 
   // ── Public: cancel edit ───────────────────────────────
@@ -324,18 +373,15 @@ const Tasks = (() => {
     if (!_editState) return;
     const { rowId, row, baseline } = _editState;
 
-    // Collect form values
     const edits = {};
     EDITABLE_FIELDS.forEach(f => {
       const el = document.getElementById('te_' + f.key);
       if (el) edits[f.key] = el.value.trim() || null;
     });
 
-    // Disable save button to prevent double-click
     const saveBtn = document.getElementById('taskEditSaveBtn');
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
 
-    // Conflict check — fetch fresh tasks.json from Drive
     if (typeof GoogleDriveStorage !== 'undefined' && GoogleDriveStorage.isAuthorized()) {
       try {
         const folderId = _getFolderId();
@@ -349,7 +395,6 @@ const Tasks = (() => {
               const baselineAt = baseline.updated_at || null;
               const driveAt    = driveRow.updated_at  || null;
               if (baselineAt && driveAt && baselineAt !== driveAt) {
-                // Someone else saved changes — show conflict modal
                 _conflictState = { rowId, baseline, remote: _snapshotRow(driveRow), mine: edits };
                 document.getElementById('taskEditOverlay')?.remove();
                 _showConflictModal();
@@ -382,7 +427,6 @@ const Tasks = (() => {
   async function resolveConflict(choice) {
     if (!_conflictState) return;
     if (choice === 'cancel') {
-      // User closed conflict modal — release lock and abandon edits
       const rowId = _conflictState.rowId;
       _closeConflict();
       if (typeof LockManager !== 'undefined') await LockManager.releaseLock(rowId);
@@ -400,7 +444,6 @@ const Tasks = (() => {
     } else if (choice === 'theirs') {
       edits = remote;
     } else {
-      // 'merge' — per-field selection via radio buttons
       edits = {};
       EDITABLE_FIELDS.forEach(f => {
         const radio = document.querySelector(`input[name="cf_${f.key}"]:checked`);
@@ -419,15 +462,12 @@ const Tasks = (() => {
 
   // ── Apply edits to the row and save ──────────────────
   async function _applyEdits(rowId, row, edits) {
-    // Stamp who updated it
     if (typeof UserManager !== 'undefined') UserManager.stampUpdated(row);
 
-    // Apply edits
     EDITABLE_FIELDS.forEach(f => {
       if (f.key in edits) row[f.key] = edits[f.key] || '';
     });
 
-    // Save to Drive
     let saved = false;
     try {
       await _saveRowsToDrive();
@@ -436,12 +476,8 @@ const Tasks = (() => {
       showToast('Save failed: ' + e.message + ' — changes kept locally only', 'error');
     }
 
-    // Re-init all modules with updated data
     buildDashboard(_allRows);
-    Invoicing.init(_allRows);
-    Readiness.init(_allRows);
 
-    // Release lock
     if (typeof LockManager !== 'undefined') {
       await LockManager.releaseLock(rowId);
     }
@@ -458,7 +494,17 @@ const Tasks = (() => {
   function _showEditModal(row) {
     document.getElementById('taskEditOverlay')?.remove();
 
-    const fields = EDITABLE_FIELDS.map(f => {
+    // Read-only section
+    const roFields = READONLY_FIELDS.map(f => {
+      const val = row[f.key] != null ? String(row[f.key]) : '—';
+      return `<div class="te-group">
+        <label class="te-label te-label-ro">${_esc(f.label)}</label>
+        <div class="te-readonly">${_esc(val)}</div>
+      </div>`;
+    }).join('');
+
+    // Editable section
+    const editFields = EDITABLE_FIELDS.map(f => {
       const val = row[f.key] != null ? String(row[f.key]) : '';
       if (f.type === 'select') {
         const opts = f.options.map(o =>
@@ -480,7 +526,7 @@ const Tasks = (() => {
     div.id        = 'taskEditOverlay';
     div.className = 'task-edit-overlay';
     div.innerHTML = `
-      <div class="task-edit-modal">
+      <div class="task-edit-modal task-edit-modal-lg">
         <div class="task-edit-header">
           <div>
             <div class="task-edit-title">Edit Task</div>
@@ -489,7 +535,10 @@ const Tasks = (() => {
           <button class="task-edit-close" onclick="Tasks.cancelEdit()">&#10005;</button>
         </div>
         <div class="task-edit-body">
-          <div class="te-grid">${fields}</div>
+          <div class="te-section-title">Site &amp; Task Information</div>
+          <div class="te-grid">${roFields}</div>
+          <div class="te-section-title te-section-editable">Tracking Fields</div>
+          <div class="te-grid">${editFields}</div>
         </div>
         <div class="task-edit-footer">
           <button class="te-btn te-btn-cancel" onclick="Tasks.cancelEdit()">Cancel</button>
@@ -499,7 +548,7 @@ const Tasks = (() => {
     document.body.appendChild(div);
   }
 
-  // ── Lock blocked modal (when row is locked by another user) ──
+  // ── Lock blocked modal ────────────────────────────────
   function _showLockBlockedModal(rowId, lockedBy, lockedAt, isAdmin) {
     document.getElementById('taskEditOverlay')?.remove();
 
@@ -532,7 +581,6 @@ const Tasks = (() => {
     document.getElementById('conflictOverlay')?.remove();
     const { baseline, remote, mine } = _conflictState;
 
-    // Find fields that differ between baseline→remote and baseline→mine
     const diffFields = EDITABLE_FIELDS.filter(f =>
       (baseline[f.key] || '') !== (remote[f.key] || '') ||
       (baseline[f.key] || '') !== (mine[f.key] || '')
@@ -630,12 +678,10 @@ const Tasks = (() => {
 // ── Shared helpers ────────────────────────────────────────
 function _statusBadge(s, raw) {
   if (!s) return '<span class="badge badge-pending">—</span>';
-  // Tooltip shows the original raw value when it differs from the normalised label
   const tip = (raw && raw !== s) ? ` title="${_esc(raw)}"` : '';
   if (s === 'Done')        return `<span class="badge badge-done"${tip}>${_esc(s)}</span>`;
   if (s === 'Cancelled')   return `<span class="badge badge-cancel"${tip}>${_esc(s)}</span>`;
   if (s === 'In Progress') return `<span class="badge badge-pending"${tip}>${_esc(s)}</span>`;
-  // Fallback for legacy/imported rows not yet normalised
   const lc = s.toLowerCase();
   if (lc === 'done')      return `<span class="badge badge-done"${tip}>${_esc(s)}</span>`;
   if (/cancel/.test(lc)) return `<span class="badge badge-cancel"${tip}>${_esc(s)}</span>`;
