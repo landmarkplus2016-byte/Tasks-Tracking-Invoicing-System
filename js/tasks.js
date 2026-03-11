@@ -323,24 +323,23 @@ const Tasks = (() => {
   }
 
   // ── Public: open edit modal ───────────────────────────
-  async function openEdit(rowId) {
+  function openEdit(rowId) {
     const row = _allRows.find(r => String(r.id) === String(rowId));
     if (!row) { showToast('Row not found', 'error'); return; }
 
+    // Check cached lock state (no network call) — block if locked by someone else
     if (typeof LockManager !== 'undefined') {
-      showToast('Acquiring lock…', 'info');
-      try {
-        const result = await LockManager.acquireLock(String(rowId));
-        if (!result.acquired) {
-          const lock = result.lock;
-          const who  = lock?.lockedByName || 'Unknown';
-          const at   = lock?.lockedAt ? new Date(lock.lockedAt).toLocaleString() : '';
-          const isAdmin = typeof UserManager !== 'undefined' && UserManager.isAdmin();
-          _showLockBlockedModal(rowId, who, at, isAdmin);
-          return;
-        }
-      } catch(e) {
-        showToast('Lock error: ' + e.message, 'error');
+      if (typeof LockManager !== 'undefined' && LockManager.isImportLocked()) {
+        const il = LockManager.getImportLock();
+        showToast(`Import in progress by ${il?.lockedByName || 'someone'} — edits blocked`, 'warn');
+        return;
+      }
+      if (LockManager.isLocked(String(rowId)) && !LockManager.isLockedByMe(String(rowId))) {
+        const lock = LockManager.getLock(String(rowId));
+        const who  = lock?.lockedByName || 'Unknown';
+        const at   = lock?.lockedAt ? new Date(lock.lockedAt).toLocaleString() : '';
+        const isAdmin = typeof UserManager !== 'undefined' && UserManager.isAdmin();
+        _showLockBlockedModal(rowId, who, at, isAdmin);
         return;
       }
     }
@@ -351,7 +350,6 @@ const Tasks = (() => {
       baseline: _snapshotRow(row)
     };
     _showEditModal(row);
-    _render();
   }
 
   // ── Public: cancel edit ───────────────────────────────
@@ -404,7 +402,7 @@ const Tasks = (() => {
       }
     }
 
-    await _applyEdits(rowId, row, edits);
+    _applyEdits(rowId, row, edits);
   }
 
   // ── Public: admin break lock ──────────────────────────
@@ -448,7 +446,7 @@ const Tasks = (() => {
     }
 
     _closeConflict();
-    await _applyEdits(rowId, row, edits);
+    _applyEdits(rowId, row, edits);
   }
 
   function _closeConflict() {
@@ -457,33 +455,30 @@ const Tasks = (() => {
   }
 
   // ── Apply edits to the row and save ──────────────────
-  async function _applyEdits(rowId, row, edits) {
+  function _applyEdits(rowId, row, edits) {
     if (typeof UserManager !== 'undefined') UserManager.stampUpdated(row);
 
     EDITABLE_FIELDS.forEach(f => {
       if (f.key in edits) row[f.key] = edits[f.key] || '';
     });
 
-    let saved = false;
-    try {
-      await _saveRowsToDrive();
-      saved = true;
-    } catch(e) {
-      showToast('Save failed: ' + e.message + ' — changes kept locally only', 'error');
-    }
-
-    buildDashboard(_allRows);
-
-    if (typeof LockManager !== 'undefined') {
-      await LockManager.releaseLock(rowId);
-    }
-
+    // Close modal and re-render immediately (optimistic)
     _editState = null;
     document.getElementById('taskEditOverlay')?.remove();
+    buildDashboard(_allRows);
     _render();
 
-    if (saved) showToast('Row saved successfully', 'success');
-    if (typeof SyncManager !== 'undefined') SyncManager.markSynced();
+    // Save to Drive in background
+    _saveRowsToDrive().then(() => {
+      showToast('Row saved successfully', 'success');
+      if (typeof SyncManager !== 'undefined') SyncManager.markSynced();
+    }).catch(e => {
+      showToast('Save failed: ' + e.message + ' — changes kept locally only', 'error');
+    });
+
+    if (typeof LockManager !== 'undefined') {
+      LockManager.releaseLock(rowId).catch(() => {});
+    }
   }
 
   // ── Edit modal ────────────────────────────────────────
