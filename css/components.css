@@ -162,9 +162,34 @@
 .filter-bar input:focus,
 .filter-bar select:focus { border-color: var(--cyan2); }
 .filter-bar select option { background: var(--bg3); }
-#tDateYear  { min-width: 90px; }
-#tDateMonth { min-width: 100px; }
-#tDateDay   { min-width: 78px; }
+.filter-date-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px 8px;
+}
+.filter-date-label {
+  font-size: 11px;
+  color: var(--text2);
+  font-family: 'Inter', sans-serif;
+  white-space: nowrap;
+  padding-right: 6px;
+  border-right: 1px solid var(--border);
+  margin-right: 2px;
+}
+.filter-date-group select {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 4px 22px 4px 4px !important;
+  min-width: 0 !important;
+}
+#tDateYear  { width: 72px; }
+#tDateMonth { width: 82px; }
+#tDateDay   { width: 58px; }
 .filter-bar select:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .filter-count {

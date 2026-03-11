@@ -85,15 +85,18 @@ const Tasks = (() => {
         <select id="tStatus" onchange="Tasks.applyFilters()">
           <option value="">All Statuses</option>
         </select>
-        <select id="tDateYear" onchange="Tasks._onDateYearChange()">
-          <option value="">All Years</option>
-        </select>
-        <select id="tDateMonth" onchange="Tasks._onDateMonthChange()" disabled>
-          <option value="">All Months</option>
-        </select>
-        <select id="tDateDay" onchange="Tasks.applyFilters()" disabled>
-          <option value="">All Days</option>
-        </select>
+        <div class="filter-date-group">
+          <span class="filter-date-label">Task Date</span>
+          <select id="tDateYear" onchange="Tasks._onDateYearChange()">
+            <option value="">Year</option>
+          </select>
+          <select id="tDateMonth" onchange="Tasks._onDateMonthChange()" disabled>
+            <option value="">Month</option>
+          </select>
+          <select id="tDateDay" onchange="Tasks.applyFilters()" disabled>
+            <option value="">Day</option>
+          </select>
+        </div>
         <select id="tCoordinator" onchange="Tasks.applyFilters()">
           <option value="">All Coordinators</option>
         </select>
@@ -202,8 +205,8 @@ const Tasks = (() => {
     const daySel   = document.getElementById('tDateDay');
     if (!monthSel || !daySel) return;
 
-    monthSel.innerHTML = '<option value="">All Months</option>';
-    daySel.innerHTML   = '<option value="">All Days</option>';
+    monthSel.innerHTML = '<option value="">Month</option>';
+    daySel.innerHTML   = '<option value="">Day</option>';
     daySel.disabled    = true;
 
     if (!year) {
@@ -216,7 +219,7 @@ const Tasks = (() => {
           .filter(Boolean)
       )].sort();
       const MONTH_NAMES = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-      monthSel.innerHTML = '<option value="">All Months</option>' +
+      monthSel.innerHTML = '<option value="">Month</option>' +
         months.map(m => `<option value="${m}">${MONTH_NAMES[parseInt(m,10)] || m}</option>`).join('');
       monthSel.disabled = false;
     }
@@ -230,7 +233,7 @@ const Tasks = (() => {
     const daySel = document.getElementById('tDateDay');
     if (!daySel) return;
 
-    daySel.innerHTML = '<option value="">All Days</option>';
+    daySel.innerHTML = '<option value="">Day</option>';
     if (!year || !month) {
       daySel.disabled = true;
     } else {
@@ -243,7 +246,7 @@ const Tasks = (() => {
           .map(r => _parseDatePart(r.task_date, 'day'))
           .filter(Boolean)
       )].sort();
-      daySel.innerHTML = '<option value="">All Days</option>' +
+      daySel.innerHTML = '<option value="">Day</option>' +
         days.map(d => `<option value="${d}">${d}</option>`).join('');
       daySel.disabled = days.length === 0;
     }
@@ -295,8 +298,8 @@ const Tasks = (() => {
     const monthSel = document.getElementById('tDateMonth');
     const daySel   = document.getElementById('tDateDay');
     if (yearSel)  yearSel.value  = '';
-    if (monthSel) { monthSel.innerHTML = '<option value="">All Months</option>'; monthSel.disabled = true; }
-    if (daySel)   { daySel.innerHTML   = '<option value="">All Days</option>';   daySel.disabled   = true; }
+    if (monthSel) { monthSel.innerHTML = '<option value="">Month</option>'; monthSel.disabled = true; }
+    if (daySel)   { daySel.innerHTML   = '<option value="">Day</option>';   daySel.disabled   = true; }
     applyFilters();
   }
 
