@@ -118,8 +118,6 @@ function _launchApp(meta) {
   // Build all sections
   buildDashboard(_rows);
   Tasks.init(_rows);
-  Invoicing.init(_rows);
-  Readiness.init(_rows);
   Settings.init(_rows);
 
   // Show app
