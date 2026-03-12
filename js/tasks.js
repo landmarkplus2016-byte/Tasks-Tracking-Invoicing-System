@@ -803,46 +803,51 @@ const Tasks = (() => {
   ];
 
   function openBulkEdit() {
-    // Build unique sorted site list
     const sites = [...new Set(_allRows.map(r => r.logical_site_id).filter(Boolean))].sort();
 
-    const fieldOptions = BULK_FIELDS.map(f =>
-      `<option value="${_esc(f.key)}">${_esc(f.label)}</option>`).join('');
+    const datalistOpts = sites.map(s => `<option value="${_esc(s)}">`).join('');
 
-    const siteOptions = sites.map(s =>
-      `<option value="${_esc(s)}">${_esc(s)}</option>`).join('');
+    const fieldsHtml = BULK_FIELDS.map(fd => {
+      let inp;
+      if (fd.type === 'select') {
+        inp = `<select id="beF_${fd.key}" class="te-input be-field-inp" data-key="${fd.key}" onchange="Tasks._onBulkFieldInput()">
+          <option value="">— no change —</option>
+          ${fd.options.filter(o => o).map(o => `<option value="${_esc(o)}">${_esc(o)}</option>`).join('')}
+        </select>`;
+      } else {
+        inp = `<input id="beF_${fd.key}" class="te-input be-field-inp" type="text"
+          placeholder="${_esc(fd.placeholder || 'leave blank to skip')}"
+          data-key="${fd.key}" oninput="Tasks._onBulkFieldInput()">`;
+      }
+      return `<div class="te-field-group"><label class="te-label">${_esc(fd.label)}</label>${inp}</div>`;
+    }).join('');
 
     const overlay = document.createElement('div');
     overlay.id = 'bulkEditOverlay';
     overlay.className = 'te-overlay';
     overlay.innerHTML = `
-      <div class="te-modal" style="max-width:480px">
+      <div class="te-modal" style="max-width:600px">
         <div class="te-header">
           <span class="te-title">Bulk Edit — Apply to All Site Rows</span>
           <button class="te-close" onclick="Tasks.closeBulkEdit()">✕</button>
         </div>
-        <div class="te-body" style="padding:20px 24px;display:flex;flex-direction:column;gap:16px">
+        <div class="te-body" style="padding:20px 24px;display:flex;flex-direction:column;gap:16px;max-height:78vh;overflow-y:auto">
 
           <div class="te-field-group">
-            <label class="te-label">Site ID</label>
-            <select id="beSite" class="te-input" onchange="Tasks._onBulkSiteChange()">
-              <option value="">— Select a site —</option>
-              ${siteOptions}
-            </select>
-            <div id="beSiteInfo" style="font-size:12px;color:var(--text2);margin-top:4px"></div>
+            <label class="te-label">Search Site</label>
+            <input id="beSite" class="te-input" list="beSiteList" placeholder="Type to search site ID…"
+              autocomplete="off" oninput="Tasks._onBulkSiteChange()">
+            <datalist id="beSiteList">${datalistOpts}</datalist>
+            <div id="beSiteInfo" style="font-size:12px;margin-top:4px;color:var(--text2)"></div>
           </div>
 
-          <div class="te-field-group">
-            <label class="te-label">Field to Change</label>
-            <select id="beField" class="te-input" onchange="Tasks._onBulkFieldChange()">
-              <option value="">— Select a field —</option>
-              ${fieldOptions}
-            </select>
-          </div>
-
-          <div id="beValueWrap" class="te-field-group" style="display:none">
-            <label class="te-label" id="beValueLabel">New Value</label>
-            <div id="beValueInput"></div>
+          <div id="beFieldsSection" style="display:none;flex-direction:column;gap:4px">
+            <div style="font-size:12px;color:var(--text2);padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;margin-bottom:4px">
+              Fill in the fields you want to change. Leave blank (or "no change") to keep existing values.
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px">
+              ${fieldsHtml}
+            </div>
           </div>
 
           <div id="bePreview" style="display:none;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text2)"></div>
@@ -850,94 +855,82 @@ const Tasks = (() => {
         </div>
         <div class="te-footer">
           <button class="te-btn-secondary" onclick="Tasks.closeBulkEdit()">Cancel</button>
-          <button class="te-btn-primary" id="beApplyBtn" onclick="Tasks._applyBulkEdit()" disabled>Apply to All Rows</button>
+          <button class="te-btn-primary" id="beApplyBtn" onclick="Tasks._applyBulkEdit()" disabled>Apply Changes</button>
         </div>
       </div>`;
     document.body.appendChild(overlay);
   }
 
   function _onBulkSiteChange() {
-    const siteId = document.getElementById('besite')?.value || document.getElementById('beSite')?.value || '';
+    const siteId = (document.getElementById('beSite')?.value || '').trim();
     const infoEl = document.getElementById('beSiteInfo');
-    if (!siteId) { if (infoEl) infoEl.textContent = ''; _updateBulkApplyBtn(); return; }
+    const section = document.getElementById('beFieldsSection');
+    const isValid = siteId && _allRows.some(r => r.logical_site_id === siteId);
+
+    if (!isValid) {
+      if (infoEl) { infoEl.textContent = siteId ? 'Site not found' : ''; infoEl.style.color = siteId ? 'var(--red,#e53e3e)' : 'var(--text2)'; }
+      if (section) section.style.display = 'none';
+      _updateBulkApplyBtn();
+      return;
+    }
+
     const count = _allRows.filter(r => r.logical_site_id === siteId).length;
-    if (infoEl) infoEl.textContent = `${count} row${count !== 1 ? 's' : ''} will be affected`;
+    if (infoEl) { infoEl.textContent = `${count} row${count !== 1 ? 's' : ''} will be affected`; infoEl.style.color = 'var(--text2)'; }
+    if (section) section.style.display = 'flex';
     _updateBulkApplyBtn();
     _updateBulkPreview();
   }
 
-  function _onBulkFieldChange() {
-    const fieldKey = document.getElementById('beField')?.value || '';
-    const wrapEl   = document.getElementById('beValueWrap');
-    const labelEl  = document.getElementById('beValueLabel');
-    const inputEl  = document.getElementById('beValueInput');
-    if (!wrapEl || !inputEl) return;
-
-    if (!fieldKey) { wrapEl.style.display = 'none'; _updateBulkApplyBtn(); return; }
-
-    const fd = BULK_FIELDS.find(f => f.key === fieldKey);
-    if (!fd) return;
-
-    if (labelEl) labelEl.textContent = fd.label;
-
-    if (fd.type === 'select') {
-      inputEl.innerHTML = `<select id="beValue" class="te-input" onchange="Tasks._updateBulkPreview(); Tasks._updateBulkApplyBtn()">
-        ${fd.options.map(o => `<option value="${_esc(o)}">${o || '(clear)'}</option>`).join('')}
-      </select>`;
-    } else {
-      inputEl.innerHTML = `<input id="beValue" class="te-input" type="text"
-        placeholder="${_esc(fd.placeholder || '')}"
-        oninput="Tasks._updateBulkPreview(); Tasks._updateBulkApplyBtn()">`;
-    }
-    wrapEl.style.display = '';
-    _updateBulkApplyBtn();
+  function _onBulkFieldInput() {
     _updateBulkPreview();
+    _updateBulkApplyBtn();
+  }
+
+  function _getBulkChanges() {
+    const changes = [];
+    BULK_FIELDS.forEach(fd => {
+      const el = document.getElementById(`beF_${fd.key}`);
+      if (el && el.value !== '') changes.push({ key: fd.key, label: fd.label, value: el.value });
+    });
+    return changes;
   }
 
   function _updateBulkPreview() {
-    const siteId   = document.getElementById('beSite')?.value  || '';
-    const fieldKey = document.getElementById('beField')?.value || '';
-    const valueEl  = document.getElementById('beValue');
-    const previewEl= document.getElementById('bePreview');
-    if (!previewEl) return;
-    if (!siteId || !fieldKey || !valueEl) { previewEl.style.display = 'none'; return; }
-
-    const fd    = BULK_FIELDS.find(f => f.key === fieldKey);
-    const value = valueEl.value;
-    const rows  = _allRows.filter(r => r.logical_site_id === siteId);
-    previewEl.style.display = '';
-    previewEl.innerHTML = `Will set <strong>${_esc(fd?.label || fieldKey)}</strong> =
-      "<strong>${_esc(value || '(empty)')}</strong>"
-      on <strong>${rows.length}</strong> row${rows.length !== 1 ? 's' : ''} for site <strong>${_esc(siteId)}</strong>`;
+    const siteId  = (document.getElementById('beSite')?.value || '').trim();
+    const preview = document.getElementById('bePreview');
+    if (!preview) return;
+    const changes = _getBulkChanges();
+    if (!siteId || !changes.length) { preview.style.display = 'none'; return; }
+    const rowCount = _allRows.filter(r => r.logical_site_id === siteId).length;
+    const list = changes.map(c => `<li><strong>${_esc(c.label)}</strong> → "<em>${_esc(c.value)}</em>"</li>`).join('');
+    preview.style.display = '';
+    preview.innerHTML = `Will update <strong>${rowCount} row${rowCount !== 1 ? 's' : ''}</strong> for site <strong>${_esc(siteId)}</strong>:<ul style="margin:6px 0 0 16px;padding:0">${list}</ul>`;
   }
 
   function _updateBulkApplyBtn() {
-    const btn      = document.getElementById('beApplyBtn');
-    const siteId   = document.getElementById('beSite')?.value  || '';
-    const fieldKey = document.getElementById('beField')?.value || '';
-    const valueEl  = document.getElementById('beValue');
-    if (btn) btn.disabled = !(siteId && fieldKey && valueEl);
+    const btn = document.getElementById('beApplyBtn');
+    const siteId = (document.getElementById('beSite')?.value || '').trim();
+    const isValidSite = siteId && _allRows.some(r => r.logical_site_id === siteId);
+    if (btn) btn.disabled = !(isValidSite && _getBulkChanges().length > 0);
   }
 
   function _applyBulkEdit() {
-    const siteId   = document.getElementById('beSite')?.value  || '';
-    const fieldKey = document.getElementById('beField')?.value || '';
-    const valueEl  = document.getElementById('beValue');
-    if (!siteId || !fieldKey || !valueEl) return;
+    const siteId  = (document.getElementById('beSite')?.value || '').trim();
+    const changes = _getBulkChanges();
+    if (!siteId || !changes.length) return;
 
-    const value = valueEl.value;
     const affected = _allRows.filter(r => r.logical_site_id === siteId);
     if (!affected.length) { showToast('No rows found for this site', 'warn'); return; }
 
     affected.forEach(row => {
       if (typeof UserManager !== 'undefined') UserManager.stampUpdated(row);
-      row[fieldKey] = value;
+      changes.forEach(c => { row[c.key] = c.value; });
     });
 
     closeBulkEdit();
     buildDashboard(_allRows);
     _render();
-    showToast(`Updated "${BULK_FIELDS.find(f=>f.key===fieldKey)?.label || fieldKey}" on ${affected.length} rows for site ${siteId}`, 'success');
+    showToast(`Updated ${changes.length} field${changes.length !== 1 ? 's' : ''} on ${affected.length} rows for site ${siteId}`, 'success');
 
     _saveRowsToDrive().then(() => {
       if (typeof SyncManager !== 'undefined') SyncManager.markSynced();
@@ -951,7 +944,7 @@ const Tasks = (() => {
   }
 
   // ── Expose ────────────────────────────────────────────
-  return { init, applyFilters, clearFilters, sortBy, openEdit, cancelEdit, saveEdit, breakLock, resolveConflict, _onDateYearChange, _onDateMonthChange, openBulkEdit, closeBulkEdit, _onBulkSiteChange, _onBulkFieldChange, _updateBulkPreview, _updateBulkApplyBtn, _applyBulkEdit };
+  return { init, applyFilters, clearFilters, sortBy, openEdit, cancelEdit, saveEdit, breakLock, resolveConflict, _onDateYearChange, _onDateMonthChange, openBulkEdit, closeBulkEdit, _onBulkSiteChange, _onBulkFieldInput, _getBulkChanges, _updateBulkPreview, _updateBulkApplyBtn, _applyBulkEdit };
 })();
 
 // ── Shared helpers ────────────────────────────────────────
