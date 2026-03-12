@@ -2338,6 +2338,37 @@ select.te-input { cursor: pointer; }
   border-top: 1px solid var(--border);
 }
 
+/* ══ Flatpickr calendar theme override ═════════════════════ */
+.flatpickr-calendar {
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.12);
+  font-family: inherit;
+}
+.flatpickr-months .flatpickr-month,
+.flatpickr-weekdays,
+span.flatpickr-weekday {
+  background: var(--cyan);
+  color: #fff;
+  border-radius: 0;
+}
+.flatpickr-months .flatpickr-month { border-radius: 9px 9px 0 0; }
+.flatpickr-current-month .flatpickr-monthDropdown-months,
+.flatpickr-current-month input.cur-year {
+  color: #fff;
+}
+.flatpickr-day.selected,
+.flatpickr-day.selected:hover {
+  background: var(--cyan);
+  border-color: var(--cyan);
+  color: #fff;
+}
+.flatpickr-day:hover {
+  background: var(--cyan-dim);
+}
+.flatpickr-day.today { border-color: var(--cyan); }
+.flatpickr-day.today:hover { background: var(--cyan-dim); }
+
 /* ══ Online dot variants (for users.js) ════════════════════ */
 .stg-online-dot {
   display: inline-block;

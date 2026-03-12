@@ -108,7 +108,7 @@ const Tasks = (() => {
         </select>
         <span class="filter-count" id="tCount">— rows</span>
         <button class="clear-btn" onclick="Tasks.clearFilters()">✕ Clear</button>
-        <button class="bulk-edit-btn" onclick="Tasks.openBulkEdit()" title="Apply one field change to all rows of a site">⊞ Bulk Edit Site</button>
+        <button class="bulk-edit-btn" onclick="Tasks.openBulkEdit()" title="Apply changes to all rows of a site">⊞ Bulk Edit</button>
       </div>
 
       <div class="table-wrap">
@@ -655,6 +655,7 @@ const Tasks = (() => {
         </div>
       </div>`;
     document.body.appendChild(div);
+    _initDatePickers(div);
   }
 
   // ── Lock blocked modal ────────────────────────────────
@@ -828,7 +829,7 @@ const Tasks = (() => {
       <div class="task-edit-modal task-edit-modal-lg">
         <div class="task-edit-header">
           <div>
-            <div class="task-edit-title">&#9638; Bulk Edit Site</div>
+            <div class="task-edit-title">&#9638; Bulk Edit</div>
             <div class="task-edit-meta">Apply changes to all rows of a selected site at once</div>
           </div>
           <button class="task-edit-close" onclick="Tasks.closeBulkEdit()">&#10005;</button>
@@ -863,6 +864,7 @@ const Tasks = (() => {
         </div>
       </div>`;
     document.body.appendChild(overlay);
+    // Date pickers will be initialised when the fields section appears (_onBulkSiteChange)
   }
 
   function _onBulkSiteChange() {
@@ -880,7 +882,9 @@ const Tasks = (() => {
 
     const count = _allRows.filter(r => r.logical_site_id === siteId).length;
     if (infoEl) { infoEl.textContent = `${count} row${count !== 1 ? 's' : ''} will be affected`; infoEl.style.color = 'var(--text2)'; }
+    const wasHidden = section && section.style.display === 'none';
     if (section) section.style.display = 'block';
+    if (wasHidden && section) _initDatePickers(section);
     _updateBulkApplyBtn();
     _updateBulkPreview();
   }
@@ -945,6 +949,19 @@ const Tasks = (() => {
 
   function closeBulkEdit() {
     document.getElementById('bulkEditOverlay')?.remove();
+  }
+
+  // ── Date pickers ──────────────────────────────────────
+  function _initDatePickers(container) {
+    if (typeof flatpickr === 'undefined') return;
+    container.querySelectorAll('input.te-input[placeholder="DD/MM/YYYY"]').forEach(el => {
+      if (el._flatpickr) return; // already initialised
+      flatpickr(el, {
+        dateFormat: 'd/m/Y',
+        allowInput: true,
+        disableMobile: true,
+      });
+    });
   }
 
   // ── Expose ────────────────────────────────────────────
