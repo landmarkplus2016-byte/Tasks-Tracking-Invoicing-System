@@ -810,52 +810,56 @@ const Tasks = (() => {
     const fieldsHtml = BULK_FIELDS.map(fd => {
       let inp;
       if (fd.type === 'select') {
-        inp = `<select id="beF_${fd.key}" class="te-input be-field-inp" data-key="${fd.key}" onchange="Tasks._onBulkFieldInput()">
-          <option value="">— no change —</option>
-          ${fd.options.filter(o => o).map(o => `<option value="${_esc(o)}">${_esc(o)}</option>`).join('')}
-        </select>`;
+        const opts = `<option value="">— no change —</option>` +
+          fd.options.filter(o => o).map(o => `<option value="${_esc(o)}">${_esc(o)}</option>`).join('');
+        inp = `<select class="te-input be-field-inp" id="beF_${fd.key}" data-key="${fd.key}" onchange="Tasks._onBulkFieldInput()">${opts}</select>`;
       } else {
-        inp = `<input id="beF_${fd.key}" class="te-input be-field-inp" type="text"
+        inp = `<input class="te-input be-field-inp" id="beF_${fd.key}" type="text"
           placeholder="${_esc(fd.placeholder || 'leave blank to skip')}"
           data-key="${fd.key}" oninput="Tasks._onBulkFieldInput()">`;
       }
-      return `<div class="te-field-group"><label class="te-label">${_esc(fd.label)}</label>${inp}</div>`;
+      return `<div class="te-group"><label class="te-label">${_esc(fd.label)}</label>${inp}</div>`;
     }).join('');
 
     const overlay = document.createElement('div');
-    overlay.id = 'bulkEditOverlay';
-    overlay.className = 'te-overlay';
+    overlay.id        = 'bulkEditOverlay';
+    overlay.className = 'task-edit-overlay';
     overlay.innerHTML = `
-      <div class="te-modal" style="max-width:600px">
-        <div class="te-header">
-          <span class="te-title">Bulk Edit — Apply to All Site Rows</span>
-          <button class="te-close" onclick="Tasks.closeBulkEdit()">✕</button>
+      <div class="task-edit-modal task-edit-modal-lg">
+        <div class="task-edit-header">
+          <div>
+            <div class="task-edit-title">&#9638; Bulk Edit Site</div>
+            <div class="task-edit-meta">Apply changes to all rows of a selected site at once</div>
+          </div>
+          <button class="task-edit-close" onclick="Tasks.closeBulkEdit()">&#10005;</button>
         </div>
-        <div class="te-body" style="padding:20px 24px;display:flex;flex-direction:column;gap:16px;max-height:78vh;overflow-y:auto">
 
-          <div class="te-field-group">
-            <label class="te-label">Search Site</label>
-            <input id="beSite" class="te-input" list="beSiteList" placeholder="Type to search site ID…"
-              autocomplete="off" oninput="Tasks._onBulkSiteChange()">
+        <div class="task-edit-body">
+
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:16px">
+            <label class="te-label" style="margin-bottom:6px;display:block">Search Site ID</label>
+            <input id="beSite" class="te-input" list="beSiteList"
+              placeholder="Type to search site…" autocomplete="off"
+              oninput="Tasks._onBulkSiteChange()"
+              style="font-size:15px;font-weight:600">
             <datalist id="beSiteList">${datalistOpts}</datalist>
-            <div id="beSiteInfo" style="font-size:12px;margin-top:4px;color:var(--text2)"></div>
+            <div id="beSiteInfo" style="font-size:12px;margin-top:6px;color:var(--text2)"></div>
           </div>
 
-          <div id="beFieldsSection" style="display:none;flex-direction:column;gap:4px">
-            <div style="font-size:12px;color:var(--text2);padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;margin-bottom:4px">
+          <div id="beFieldsSection" style="display:none">
+            <div style="font-size:12px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:14px">
               Fill in the fields you want to change. Leave blank (or "no change") to keep existing values.
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 20px">
-              ${fieldsHtml}
-            </div>
+            <div class="te-grid">${fieldsHtml}</div>
           </div>
 
-          <div id="bePreview" style="display:none;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text2)"></div>
+          <div id="bePreview" style="display:none;margin-top:14px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text2)"></div>
 
         </div>
-        <div class="te-footer">
-          <button class="te-btn-secondary" onclick="Tasks.closeBulkEdit()">Cancel</button>
-          <button class="te-btn-primary" id="beApplyBtn" onclick="Tasks._applyBulkEdit()" disabled>Apply Changes</button>
+
+        <div class="task-edit-footer">
+          <button class="te-btn te-btn-cancel" onclick="Tasks.closeBulkEdit()">Cancel</button>
+          <button class="te-btn te-btn-save" id="beApplyBtn" onclick="Tasks._applyBulkEdit()" disabled>Apply Changes</button>
         </div>
       </div>`;
     document.body.appendChild(overlay);
@@ -876,7 +880,7 @@ const Tasks = (() => {
 
     const count = _allRows.filter(r => r.logical_site_id === siteId).length;
     if (infoEl) { infoEl.textContent = `${count} row${count !== 1 ? 's' : ''} will be affected`; infoEl.style.color = 'var(--text2)'; }
-    if (section) section.style.display = 'flex';
+    if (section) section.style.display = 'block';
     _updateBulkApplyBtn();
     _updateBulkPreview();
   }
